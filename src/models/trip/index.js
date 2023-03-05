@@ -7,6 +7,7 @@ const TripSchema = new mongoose.Schema({
   requestId: { type: String, required: true, unique: true },
   vehicleId: { type: String, required: true },
   organisationId: { type: String, required: true },
+  isVendorRequested: { type: Boolean, required: true },
   customerId: { type: String },
   vendorId: { type: String },
   truckType: { type: String },

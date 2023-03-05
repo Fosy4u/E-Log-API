@@ -36,12 +36,12 @@ const canDeleteOrEditOrganisationCustomerRemark = async (param) => {
   return canPerformAction;
 };
 const canDeleteOrEditOrganisationVendorAgentRemark = async (param) => {
-  const { vendorId, remarkId, userId } = param;
+  const { vendorAgentId, remarkId, userId } = param;
   let canPerformAction = false;
   const vendor = await VendorAgentModel.findOne({
-    _id: vendorId,
+    _id: vendorAgentId,
   });
-  if (vendor.remarks?.length > 0) {
+  if (vendor?.remarks?.length > 0) {
     const remark = vendor.remarks.find(
       (remark) => remark._id.toString() === remarkId
     );

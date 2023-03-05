@@ -1,8 +1,4 @@
 const mongoose = require("mongoose");
-const ReceiptModel = require("../models/receipt");
-const OrganisationContactModel = require("../models/organisationContact");
-//const SaleModel = require("../models/sales");
-const OrganisationUserModel = require("../models/organisationUsers");
 const OrganisationPartnerModel = require("../models/organisationPartner");
 const {
   canDeleteOrEditOrganisationPartnerRemark,
@@ -711,6 +707,12 @@ const deletePartner = async (contacts, userId) => {
 const deleteOrganisationPartner = async (req, res) => {
   try {
     const { ids, userId } = req.body;
+    if (!ids) {
+      return res.status(400).send({ error: "please provide partner id" });
+    }
+    if (!userId) {
+      return res.status(400).send({ error: "please provide user id" });
+    }
     const invalidPartners = await validatePartners(ids);
     if (invalidPartners.length > 0) {
       return res.status(400).send({
@@ -735,7 +737,7 @@ const restorePartners = async (contacts, userId) => {
     const result = await acc;
     const restored = await OrganisationPartnerModel.findByIdAndUpdate(
       _id,
-      { disabled: false },
+      { disabled: false, },
       { new: true }
     );
     if (restored) {
@@ -746,7 +748,7 @@ const restorePartners = async (contacts, userId) => {
         details: `Partner - ${restored.firstName} ${restored.lastName} deleted`,
         reason: `restored partner`,
       };
-      const updateLog = await OrganisationContactModel.findByIdAndUpdate(
+      const updateLog = await OrganisationPartnerModel.findByIdAndUpdate(
         restored._id,
         // { name, category, price },
 
@@ -763,6 +765,12 @@ const restorePartners = async (contacts, userId) => {
 const restoreOrganisationPartner = async (req, res) => {
   try {
     const { ids, userId } = req.body;
+    if (!ids) {
+      return res.status(400).send({ error: "please provide partner id" });
+    }
+    if (!userId) {
+      return res.status(400).send({ error: "please provide user id" });
+    }
     const invalidPartners = await validatePartners(ids);
     if (invalidPartners.length > 0) {
       return res.status(400).send({

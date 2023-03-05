@@ -4,10 +4,14 @@ const {
   verifyVehicleId,
   verifyVendorAgentId,
 } = require("../helpers/verifyValidity");
+const {
+  canDeleteOrEditOrganisationVendorAgentRemark,
+} = require("../helpers/actionPermission");
+const mongoose = require("mongoose");
 
 const createVendorAgent = async (req, res) => {
   const { organisationId, userId, remark } = req.body;
-  console.log("reqqq",req.body);
+  console.log("reqqq", req.body);
   try {
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
@@ -77,7 +81,9 @@ const getAllVendorAgents = async (req, res) => {
       disabled: disabled ? disabled : false,
     });
 
-    return res.status(200).send({ data: vendorAgents, message: "Vendors fetched" });
+    return res
+      .status(200)
+      .send({ data: vendorAgents, message: "Vendors fetched" });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -233,7 +239,8 @@ const deleteVendorAgentRemark = async (req, res) => {
       return res
         .status(400)
         .send({ error: "you dont have the permission to delete this remark" });
-    const updateRemark = await CustomerModel.findByIdAndUpdate(
+
+    const updateRemark = await VendorAgentModel.findByIdAndUpdate(
       {
         _id: vendorAgentId,
       },
@@ -305,7 +312,7 @@ const addVendorAgentRemark = async (req, res) => {
 
     if (!userId)
       return res.status(400).send({ error: "current userId is required " });
-    const contact = await CustomerModel.findById({ _id });
+    const contact = await VendorAgentModel.findById({ _id });
     if (!contact) return res.status(400).send({ error: "customer not found" });
     remarkObj.date = new Date();
     const updateRemark = await VendorAgentModel.findByIdAndUpdate(
@@ -362,10 +369,12 @@ const deleteRestoreVendorAgent = async (trips, userId, disabledValue) => {
 
 const deleteVendorAgent = async (req, res) => {
   try {
-    const { ids, organisationId } = req.body;
+    const { ids, organisationId, userId } = req.body;
     if (!ids) return res.status(400).send({ error: "ids is required" });
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
+    if (!userId)
+      return res.status(400).send({ error: "current userId is required" });
     const invalidVendorAgent = await validateVendorAgent(ids);
     if (invalidVendorAgent.length > 0) {
       return res.status(400).send({
@@ -407,7 +416,7 @@ const restoreVendorAgent = async (req, res) => {
       userId,
       disabledValue
     );
-    if (restoredTrips.length > 0) {
+    if (restoredVendorAgent.length > 0) {
       return res.status(200).send({
         message: "trip deleted successfully",
         data: restoredVendorAgent,
@@ -419,14 +428,14 @@ const restoreVendorAgent = async (req, res) => {
 };
 
 module.exports = {
-    createVendorAgent,
-    getVendorAgent,
-    editVendorAgent,
-    deleteVendorAgent,
-    restoreVendorAgent,
-    addVendorAgentRemark,
-    editVendorAgentRemark,
-    deleteVendorAgentRemark,
-    getAllVendorAgents,
-    getVendorAgentRemarks
-}
+  createVendorAgent,
+  getVendorAgent,
+  editVendorAgent,
+  deleteVendorAgent,
+  restoreVendorAgent,
+  addVendorAgentRemark,
+  editVendorAgentRemark,
+  deleteVendorAgentRemark,
+  getAllVendorAgents,
+  getVendorAgentRemarks,
+};

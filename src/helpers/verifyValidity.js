@@ -35,6 +35,7 @@ const verifyVendorAgentId = async (vendorAgentId, organisationId) => {
   return valid;
 };
 
+
 module.exports = {
   verifyUserId,
   verifyVehicleId,

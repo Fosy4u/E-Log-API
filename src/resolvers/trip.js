@@ -69,7 +69,6 @@ const createTrip = async (req, res) => {
     organisationId,
     userId,
     remark,
-    requestId,
     vehicleId,
     cargoName,
     customerId,
@@ -79,14 +78,13 @@ const createTrip = async (req, res) => {
     dropOffDate,
     price,
     vendorId,
+    isVendorRequested
   } = req.body;
   try {
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
 
     if (!userId) return res.status(400).send({ error: "userId is required" });
-    if (!requestId)
-      return res.status(400).send({ error: "requestId is required" });
     if (!vehicleId)
       return res.status(400).send({ error: "vehicleId is required" });
     if (!cargoName)
@@ -102,6 +100,8 @@ const createTrip = async (req, res) => {
     if (!dropOffDate)
       return res.status(400).send({ error: "dropOffDate is required" });
     if (!price) return res.status(400).send({ error: "price is required" });
+    if (!isVendorRequested)
+      return res.status(400).send({ error: "isVendorRequested is required" });
 
     const log = {
       date: new Date(),
