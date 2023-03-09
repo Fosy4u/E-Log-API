@@ -14,7 +14,6 @@ const customerResolver = require("../resolvers/customer");
 const tripResolver = require("../resolvers/trip");
 const vendorAgentResolver = require("../resolvers/vendorAgent");
 
-
 let routes = (app) => {
   router.get("/", homeResolver.getHome);
 
@@ -84,6 +83,7 @@ let routes = (app) => {
   router.get("/truck", authMiddleware, truckResolver.getTruck);
   router.get("/truck/param", authMiddleware, truckResolver.getTruckByParam);
   router.get("/trucks/partner", authMiddleware, truckResolver.getPartnerTrucks);
+  router.get("/trucks/available", authMiddleware, truckResolver.getAvailableTrucks);
   router.put(
     "/truck/edit",
     authMiddleware,
@@ -135,8 +135,6 @@ let routes = (app) => {
     uploadImage,
     driverResolver.uploadDriverDoc
   );
-
-
 
   //OrganisationPartner
   router.post(
@@ -248,27 +246,80 @@ let routes = (app) => {
   );
 
   //VendorAgent
-  router.post( "/vendorAgent/create", authMiddleware, vendorAgentResolver.createVendorAgent);
-  router.get("/vendorAgents", authMiddleware, vendorAgentResolver.getAllVendorAgents);
-  router.get("/vendorAgent", authMiddleware, vendorAgentResolver.getVendorAgent);
-  router.get("/vendorAgent/remarks", authMiddleware, vendorAgentResolver.getVendorAgentRemarks);
-  router.put("/vendorAgent/edit", authMiddleware, vendorAgentResolver.editVendorAgent);
-  router.put("/vendorAgent/delete", authMiddleware, vendorAgentResolver.deleteVendorAgent);
-  router.put("/vendorAgent/restore", authMiddleware, vendorAgentResolver.restoreVendorAgent);
-  router.put("/vendorAgent/addRemark", authMiddleware, vendorAgentResolver.addVendorAgentRemark);
-  router.put("/vendorAgent/deleteRemark", authMiddleware, vendorAgentResolver.deleteVendorAgentRemark);
-  router.put("/vendorAgent/editRemark", authMiddleware, vendorAgentResolver.editVendorAgentRemark);
-
+  router.post(
+    "/vendorAgent/create",
+    authMiddleware,
+    vendorAgentResolver.createVendorAgent
+  );
+  router.get(
+    "/vendorAgents",
+    authMiddleware,
+    vendorAgentResolver.getAllVendorAgents
+  );
+  router.get(
+    "/vendorAgent",
+    authMiddleware,
+    vendorAgentResolver.getVendorAgent
+  );
+  router.get(
+    "/vendorAgent/remarks",
+    authMiddleware,
+    vendorAgentResolver.getVendorAgentRemarks
+  );
+  router.put(
+    "/vendorAgent/edit",
+    authMiddleware,
+    vendorAgentResolver.editVendorAgent
+  );
+  router.put(
+    "/vendorAgent/delete",
+    authMiddleware,
+    vendorAgentResolver.deleteVendorAgent
+  );
+  router.put(
+    "/vendorAgent/restore",
+    authMiddleware,
+    vendorAgentResolver.restoreVendorAgent
+  );
+  router.put(
+    "/vendorAgent/addRemark",
+    authMiddleware,
+    vendorAgentResolver.addVendorAgentRemark
+  );
+  router.put(
+    "/vendorAgent/deleteRemark",
+    authMiddleware,
+    vendorAgentResolver.deleteVendorAgentRemark
+  );
+  router.put(
+    "/vendorAgent/editRemark",
+    authMiddleware,
+    vendorAgentResolver.editVendorAgentRemark
+  );
 
   //Trip
-  router.post("/trip/create", authMiddleware, tripResolver.createTrip);
+  router.post(
+    "/trip/create",
+    authMiddleware,
+
+    tripResolver.createTrip
+  );
   router.get("/trips", authMiddleware, tripResolver.getTrips);
   router.get("/trip", authMiddleware, tripResolver.getTrip);
   router.get("/trip/remarks", authMiddleware, tripResolver.getTripRemarks);
+  router.get("/trip/logs", authMiddleware, tripResolver.getTripLogs);
   router.put("/trip/edit", authMiddleware, tripResolver.updateTrip);
   router.put("/trip/delete", authMiddleware, tripResolver.deleteTrips);
   router.put("/trip/restore", authMiddleware, tripResolver.restoreTrips);
   router.put("/trip/addRemark", authMiddleware, tripResolver.addTripRemark);
+  router.put("/trip/action", authMiddleware, tripResolver.tripAction);
+  router.put(
+    "/trip/waybil/upload",
+    authMiddleware,
+    uploadImage,
+    tripResolver.uploadWaybill
+  );
+
   router.put(
     "/trip/deleteRemark",
     authMiddleware,

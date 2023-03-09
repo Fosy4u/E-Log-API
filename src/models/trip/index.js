@@ -2,10 +2,18 @@
 const mongoose = require("mongoose");
 const timestamp = require("mongoose-timestamp");
 
+const TimeLineActionSchema = new mongoose.Schema({
+ 
+  action: { type: String, required: true },
+  date: { type: String, required: true },
+  userId: { type: String, required: true },
+  status: { type: String, required: true },
+});
+
 const TripSchema = new mongoose.Schema({
   disabled: { type: Boolean, default: false },
   requestId: { type: String, required: true, unique: true },
-  vehicleId: { type: String, required: true },
+  vehicleId: { type: String },
   organisationId: { type: String, required: true },
   isVendorRequested: { type: Boolean, required: true },
   customerId: { type: String },
@@ -13,20 +21,28 @@ const TripSchema = new mongoose.Schema({
   truckType: { type: String },
   maxLoad: { type: String },
   estimatedDropOffDate: { type: String },
-  estimatedFuelLitters : { type: String },
-  actualFuelLitters : { type: String },
+  estimatedFuelLitters: { type: Number },
+  estimatedFuelCost: { type: Number },
+  actualFuelCost: { type: Number },
+  actualFuelLitters: { type: Number },
   status: { type: String, required: true, default: "pending" },
   pickupAddress: { type: String, required: true },
   dropOffAddress: { type: String, required: true },
   pickupDate: { type: String, required: true },
-  expectedDropOffDate: { type: String },
-  dropOffDate : { type: String },
-  createdBy: { type: String, required: true },
-  price: { type: String },
-  cargoName: { type: String, required: true },
+  dropOffDate: { type: String },
+  price: { type: Number, required: true },
+  productName: { type: String, required: true },
   remarks: {
     type: [{ userId: String, remark: String, date: String }],
     required: false,
+  },
+  requestedWaybilImageUrl: {
+    link: { type: String, required: false },
+    name: { type: String, required: false },
+  },
+  deliveredWaybilImageUrl: {
+    link: { type: String, required: false },
+    name: { type: String, required: false },
   },
   logs: [
     {
@@ -41,14 +57,11 @@ const TripSchema = new mongoose.Schema({
       reason: String,
     },
   ],
+  timeline : [TimeLineActionSchema],
 });
 
 TripSchema.plugin(timestamp);
 
-const TripModel = mongoose.model(
-  "trip",
-  TripSchema,
-  "trip"
-);
+const TripModel = mongoose.model("trip", TripSchema, "trip");
 
 module.exports = TripModel;

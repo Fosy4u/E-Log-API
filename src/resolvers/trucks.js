@@ -1,4 +1,5 @@
 const TruckModel = require("../models/truck");
+const TripModel = require("../models/trip");
 const DriverModel = require("../models/driver");
 const OrganisationPartnerModel = require("../models/organisationPartner");
 const { storageRef } = require("../config/firebase"); // reference to our db
@@ -108,9 +109,10 @@ const getTruck = async (req, res) => {
 };
 const getPartnerTrucks = async (req, res) => {
   try {
-    const {partnerId} = req.query;
-    if (!partnerId) return res.status(400).send({ error: "partnerId is required" });
-    const truck = await TruckModel.find({ assignedPartnerId : partnerId });
+    const { partnerId } = req.query;
+    if (!partnerId)
+      return res.status(400).send({ error: "partnerId is required" });
+    const truck = await TruckModel.find({ assignedPartnerId: partnerId });
     return res.status(200).send({ data: truck });
   } catch (error) {
     return res.status(500).send({ error: error.message });
@@ -253,7 +255,6 @@ const deleteTruck = async (req, res) => {
   }
 };
 const editTruck = async (req, res) => {
-  
   try {
     if (!req.body.imageUrl && req.file) {
       const { _id } = req.body;
@@ -279,7 +280,7 @@ const editTruck = async (req, res) => {
           deleteImageFromFirebase(truckImage)
         );
       }
-      if(update?.ownership !== "Partner" && update?.assignedPartnerId){
+      if (update?.ownership !== "Partner" && update?.assignedPartnerId) {
         const removePartner = await TruckModel.findByIdAndUpdate(
           _id,
           { assignedPartnerId: " " },
@@ -287,7 +288,6 @@ const editTruck = async (req, res) => {
         );
         return res.status(200).send({ data: removePartner });
       }
-      
 
       return res.status(200).send({ data: update });
     } else {
@@ -300,7 +300,7 @@ const editTruck = async (req, res) => {
       );
 
       if (update) {
-        if(update?.ownership !== "Partner" && update?.assignedPartnerId){
+        if (update?.ownership !== "Partner" && update?.assignedPartnerId) {
           const removePartner = await TruckModel.findByIdAndUpdate(
             _id,
             { assignedPartnerId: null },
@@ -452,8 +452,7 @@ const removePartnerTruck = async (req, res) => {
     if (!truck?.active) {
       return res.status(400).send({ error: "truck is not active" });
     }
-  
-   
+
     const updatedTruck = await TruckModel.findByIdAndUpdate(
       { _id: truckId },
       { assignedPartnerId: null },
@@ -517,7 +516,24 @@ const activateTruck = async (req, res) => {
     return res.status(500).send({ error: error.message });
   }
 };
+const getAvailableTrucks = async (req, res) => {
+  try {
+    const { organisationId } = req.query;
+    if (!organisationId) {
+      return res.status(400).send({ error: "no organisationId provided" });
+    }
+    const trucks = await TruckModel.find({
+      active: true,
+      disabled: false,
+      organisationId,
+      status: "available",
+    });
 
+    return res.status(200).send({ data: trucks });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
 module.exports = {
   createTruck,
   getTruck,
@@ -531,5 +547,6 @@ module.exports = {
   activateTruck,
   assignPartnerTruck,
   removePartnerTruck,
-  getPartnerTrucks
+  getPartnerTrucks,
+  getAvailableTrucks,
 };

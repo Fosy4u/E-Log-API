@@ -1,15 +1,61 @@
+const mongoose = require("mongoose");
 const TripModel = require("../models/trip");
 const TruckModel = require("../models/truck");
 const VendorAgentModel = require("../models/vendorAgent");
+const CustomerModel = require("../models/customer");
 const {
   canDeleteOrEditOrganisationTripRemark,
+  canEditOrganisationTrip,
 } = require("../helpers/actionPermission");
 const {
   verifyUserId,
   verifyVehicleId,
   verifyVendorAgentId,
 } = require("../helpers/verifyValidity");
+const path = require("path");
+const root = require("../../root");
+const { v4: uuidv4 } = require("uuid");
+const sharp = require("sharp");
+const { storageRef } = require("../config/firebase"); // reference to our db
 
+//saving image to firebase storage
+const addImage = async (req, filename) => {
+  let url = {};
+  if (filename) {
+    const source = path.join(root + "/uploads/" + filename);
+    await sharp(source)
+      .resize(1024, 1024)
+      .jpeg({ quality: 90 })
+      .toFile(path.resolve(req.file.destination, "resized", filename));
+    const storage = await storageRef.upload(
+      path.resolve(req.file.destination, "resized", filename),
+      {
+        public: true,
+        destination: `/partner/${filename}`,
+        metadata: {
+          firebaseStorageDownloadTokens: uuidv4(),
+        },
+      }
+    );
+    url = { link: storage[0].metadata.mediaLink, name: filename };
+    return url;
+  }
+  return url;
+};
+const deleteImageFromFirebase = async (name) => {
+  if (name) {
+    storageRef
+      .file("/partner/" + name)
+      .delete()
+      .then(() => {
+        return true;
+      })
+      .catch((err) => {
+        console.log("err is", err);
+        return false;
+      });
+  }
+};
 const getTrip = async (req, res) => {
   try {
     const { _id, organisationId } = req.query;
@@ -50,16 +96,20 @@ const generateUniqueCode = async (organisationId) => {
   do {
     const randomVal = getRandomInt(1000000, 9999999);
     code = `${randomVal}`;
-    const exist = await TripModel.findOne({
-      organisationId,
-      requestId: code,
-    });
-    if (exist) {
+    const exist = await TripModel.findOne(
+      {
+        organisationId,
+        requestId: code,
+      },
+      { lean: true }
+    );
+
+    if (exist || exist !== null) {
       found = true;
     } else {
       found = false;
     }
-  } while (!found);
+  } while (found);
 
   return code.toString();
 };
@@ -69,39 +119,37 @@ const createTrip = async (req, res) => {
     organisationId,
     userId,
     remark,
-    vehicleId,
-    cargoName,
+
+    productName,
     customerId,
-    pickUpAddress,
-    pickUpDate,
+    pickupAddress,
+    pickupDate,
     dropOffAddress,
-    dropOffDate,
+    estimatedDropOffDate,
     price,
     vendorId,
-    isVendorRequested
+    isVendorRequested,
   } = req.body;
   try {
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
 
     if (!userId) return res.status(400).send({ error: "userId is required" });
-    if (!vehicleId)
-      return res.status(400).send({ error: "vehicleId is required" });
-    if (!cargoName)
-      return res.status(400).send({ error: "cargoName is required" });
+
+    if (!productName)
+      return res.status(400).send({ error: "productName is required" });
     if (!customerId)
       return res.status(400).send({ error: "customerId is required" });
-    if (!pickUpAddress)
-      return res.status(400).send({ error: "pickUpAddress is required" });
-    if (!pickUpDate)
-      return res.status(400).send({ error: "pickUpDate is required" });
+    if (!pickupAddress)
+      return res.status(400).send({ error: "pickupAddress is required" });
+    if (!pickupDate)
+      return res.status(400).send({ error: "pickupDate is required" });
     if (!dropOffAddress)
       return res.status(400).send({ error: "dropOffAddress is required" });
-    if (!dropOffDate)
-      return res.status(400).send({ error: "dropOffDate is required" });
+
     if (!price) return res.status(400).send({ error: "price is required" });
-    if (!isVendorRequested)
-      return res.status(400).send({ error: "isVendorRequested is required" });
+    if (isVendorRequested && !vendorId)
+      return res.status(400).send({ error: "vendorId is required" });
 
     const log = {
       date: new Date(),
@@ -111,15 +159,8 @@ const createTrip = async (req, res) => {
       reason: `accepted customer request`,
     };
 
-    const vehicle = await TruckModel.findOne({
-      _id: vehicleId,
-      organisationId,
-      disabled: false,
-    }).lean();
-    if (!vehicle) return res.status(400).send({ error: "vehicle not found" });
-    if (vehicle.status !== "available")
-      return res.status(400).send({ error: "vehicle not available" });
     const validUserId = await verifyUserId(userId, organisationId);
+
     if (!validUserId) {
       return res
         .status(400)
@@ -127,13 +168,16 @@ const createTrip = async (req, res) => {
     }
     if (vendorId) {
       const validVendorId = await verifyVendorAgentId(vendorId, organisationId);
+
       if (!validVendorId) {
         return res
           .status(400)
           .send({ error: "vendorId is invalid for this organisation" });
       }
     }
+
     const requestId = await generateUniqueCode(organisationId);
+
     let remarks = [];
 
     if (remark) {
@@ -143,25 +187,36 @@ const createTrip = async (req, res) => {
         date: new Date(),
       });
     }
+    const timeline = [
+      {
+        date: new Date(),
+        userId: userId,
+        action: "created",
+        status: "done",
+      },
+    ];
+
     const params = {
       ...req.body,
       remarks,
       requestId,
+      timeline,
       logs: [log],
     };
 
     const createTrip = new TripModel({ ...params });
     const newTrip = await createTrip.save();
-    if (newTrip) {
-      const updateVehicle = await TruckModel.findByIdAndUpdate(
-        vehicleId,
-        {
-          status: "on trip",
-        },
-        { new: true }
-      );
-      return res.status(200).send({ message: "Trip created", data: newTrip });
-    }
+    // if (newTrip) {
+    //   const updateVehicle = await TruckModel.findByIdAndUpdate(
+    //     vehicleId,
+    //     {
+    //       status: "on trip",
+    //     },
+    //     { new: true }
+    //   );
+    //   return res.status(200).send({ message: "Trip created", data: newTrip });
+    // }
+    return res.status(200).send({ message: "Trip created", data: newTrip });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -180,13 +235,19 @@ const updateTrip = async (req, res) => {
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
     if (!userId) return res.status(400).send({ error: "userId is required" });
-
+    console.log("reach here 1");
     const validUserId = await verifyUserId(userId, organisationId);
     if (!validUserId) {
       return res
         .status(400)
         .send({ error: "userId is invalid for this organisation" });
     }
+
+    const permitted = await canEditOrganisationTrip({ tripId: _id, userId });
+    if (!permitted) {
+      return res.status(400).send({ error: "you cannot edit this trip" });
+    }
+    console.log("reach here 2");
     if (req?.body?.vehicleId) {
       const vehicle = await TruckModel.findOne({
         _id: req?.body?.vehicleId,
@@ -197,6 +258,7 @@ const updateTrip = async (req, res) => {
       if (vehicle.status !== "available")
         return res.status(400).send({ error: "vehicle not available" });
     }
+    console.log("reach here 3");
     if (vendorId) {
       const validVendorId = await verifyVendorAgentId(vendorId, organisationId);
       if (!validVendorId) {
@@ -205,6 +267,7 @@ const updateTrip = async (req, res) => {
           .send({ error: "vendorId is invalid for this organisation" });
       }
     }
+    console.log("reach here 4");
     const currentTrip = TripModel.findOne({ _id, organisationId }).lean();
     if (!currentTrip) return res.status(400).send({ error: "trip not found" });
 
@@ -301,7 +364,7 @@ const updateTrip = async (req, res) => {
       date: new Date(),
       userId: userId,
       action: "edit",
-      details: `trip - ${updateTrip.requestId} updated`,
+      details: `trip updated`,
       reason: `updated trip`,
       difference,
     };
@@ -355,11 +418,13 @@ const validateTrips = async (ids) => {
 const deleteRestoreTrips = async (trips, userId, disabledValue) => {
   return trips.reduce(async (acc, _id) => {
     const result = await acc;
+
     const disabled = await TripModel.findByIdAndUpdate(
       _id,
       { disabled: disabledValue },
       { new: true }
     );
+
     if (disabled) {
       const log = {
         date: new Date(),
@@ -370,12 +435,33 @@ const deleteRestoreTrips = async (trips, userId, disabledValue) => {
         }`,
         reason: `${disabledValue ? "deleted" : "restored"} trip`,
       };
+      const timeline = disabled?.timeline?.filter(
+        (item) => item?.action === "created"
+      );
+      console.log("about to delete 3");
       const updateLog = await TripModel.findByIdAndUpdate(
         disabled._id,
 
-        { $push: { logs: log } },
+        {
+          $push: { logs: log },
+          $set: { timeline: timeline, status: disabledValue ? "Deleted" : "Pending" },
+          $unset: { vehicleId: 1 },
+        },
         { new: true }
       );
+      if (
+        updateLog &&
+        disabled?.vehicleId &&
+        disabled?.status.toLowerCase() !== "delivered"
+      ) {
+        const updateVehicle = await TruckModel.findByIdAndUpdate(
+          disabled?.vehicleId,
+          {
+            status: "available",
+          },
+          { new: true }
+        );
+      }
       result.push(_id);
     }
 
@@ -386,6 +472,8 @@ const deleteRestoreTrips = async (trips, userId, disabledValue) => {
 const deleteTrips = async (req, res) => {
   try {
     const { ids, userId } = req.body;
+    if (!ids || ids.length === 0)
+      return res.status(400).send({ error: "no trip id provided" });
     const invalidTrips = await validateTrips(ids);
     if (invalidTrips.length > 0) {
       return res.status(400).send({
@@ -564,7 +652,7 @@ const deleteTripRemark = async (req, res) => {
     if (!userId)
       return res.status(400).send({ error: "current userId is required" });
 
-    const trip = await CustomerModel.findById({
+    const trip = await TripModel.findById({
       _id: tripId,
     });
     if (!trip) return res.status(400).send({ error: "trip not found" });
@@ -574,17 +662,6 @@ const deleteTripRemark = async (req, res) => {
       return res
         .status(400)
         .send({ error: "you dont have the permission to delete this remark" });
-    const updateRemark = await TruckModel.findByIdAndUpdate(
-      {
-        _id: tripId,
-      },
-      {
-        $pull: {
-          remarks: { _id: remarkId },
-        },
-      },
-      { new: true }
-    );
     const log = {
       date: new Date(),
       userId,
@@ -592,9 +669,17 @@ const deleteTripRemark = async (req, res) => {
       reason: "deleted remark",
       details: `deleted remark on trip`,
     };
-    const updateTrip = await CustomerModel.findByIdAndUpdate(
-      { _id: tripId },
-      { $push: { logs: log } },
+    console.log("remarkId", remarkId);
+    const updateRemark = await TripModel.findByIdAndUpdate(
+      {
+        _id: tripId,
+      },
+      {
+        $pull: {
+          remarks: { _id: remarkId },
+        },
+        $push: { logs: log },
+      },
       { new: true }
     );
 
@@ -736,57 +821,340 @@ const getTripRemarks = async (req, res) => {
     return res.status(500).send({ error: error.message });
   }
 };
+const uploadWaybill = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).send({ error: "file is required" });
+    const { _id, userId, field } = req.body;
+    if (!_id) return res.status(400).send({ error: "tripId is required" });
+    if (!userId) return res.status(400).send({ error: "userId is required" });
+    if (!field) return res.status(400).send({ error: "field is required" });
+    if (
+      field !== "deliveredWaybilImageUrl" &&
+      field !== "requestedWaybilImageUrl"
+    )
+      return res.status(400).send({ error: "field is invalid" });
+    const permitted = await canEditOrganisationTrip({ tripId: _id, userId });
+    if (!permitted) {
+      return res.status(400).send({ error: "you cannot edit this trip" });
+    }
+    const trip = await TripModel.findById({ _id });
+    if (!trip) return res.status(400).send({ error: "trip not found" });
+    let oldImageName;
+    const filename = req.file.filename;
+    const imageUrl = await addImage(req, filename);
+    let updateTrip;
+    let log;
+    const difference = [];
+    if (field === "deliveredWaybilImageUrl") {
+      difference.push({
+        field: "delivered Waybil",
+        oldValue: trip.deliveredWaybilImageUrl?.name,
+        newValue: imageUrl?.name,
+      });
+      log = {
+        date: new Date(),
+        userId,
+        action: "edit",
+        reason: "uploaded delivered waybill",
+        details: `uploaded delivered waybill on trip`,
+        difference,
+      };
+      oldImageName = trip?.deliveredWaybilImageUrl?.name;
+      updateTrip = await TripModel.findByIdAndUpdate(
+        { _id },
+        { deliveredWaybilImageUrl: imageUrl, $push: { logs: log } },
+        { new: true }
+      );
+      if (!updateTrip)
+        return res.status(400).send({ error: "error in waybill upload" });
+      if (oldImageName !== imageUrl?.name)
+        await deleteImageFromFirebase(oldImageName);
+      return res.status(200).send({ data: updateTrip });
+    }
+    if (field === "requestedWaybilImageUrl") {
+      difference.push({
+        field: "request Waybil",
+        oldValue: trip.requestedWaybilImageUrl?.name,
+        newValue: imageUrl?.name,
+      });
+      log = {
+        date: new Date(),
+        userId,
+        action: "edit",
+        reason: "uploaded request waybill",
+        details: `uploaded request waybill on trip`,
+        difference,
+      };
+      oldImageName = trip?.requestedWaybilImageUrl?.name;
+      updateTrip = await TripModel.findByIdAndUpdate(
+        { _id },
+        { requestedWaybilImageUrl: imageUrl, $push: { logs: log } },
+        { new: true }
+      );
+      if (!updateTrip)
+        return res.status(400).send({ error: "error in waybill upload" });
+      if (oldImageName !== imageUrl?.name)
+        await deleteImageFromFirebase(oldImageName);
+      return res.status(200).send({ data: updateTrip });
+    }
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
 
-// const assignVehicleToTrip = async (req, res) => {
-//   try {
-//     const { tripId, vehicleId, userId } = req.body;
-//     if (!tripId) return res.status(400).send({ error: "tripId is required" });
-//     if (!vehicleId)
-//       return res.status(400).send({ error: "vehicleId is required" });
-//     if (!userId) return res.status(400).send({ error: "userId is required" });
+const tripAction = async (req, res) => {
+  try {
+    const { tripId, vehicleId, userId, action, cancelReason, resumeReason } =
+      req.body;
 
-//     const validVehicle = await TruckModel.findOne({ _id: vehicleId });
-//     if (!validVehicle) {
-//       return res.status(400).send({ error: "vehicleId is invalid" });
-//     }
-//     const assignedVehicle = await TripModel.findOne({
-//       vehicleId,
-//       status: { $ne: "completed" },
-//     });
-//     if (assignedVehicle)
-//       return res.status(400).send({
-//         error: "vehicle is already assigned to another uncompleted trip",
-//       });
-//     const assignVehicle = await TripModel.findByIdAndUpdate(
-//       { _id: tripId },
-//       {
-//         $set: {
-//           vehicleId,
-//         },
-//       },
-//       { new: true }
-//     );
-//     if (!assignVehicle)
-//       return res
-//         .status(400)
-//         .send({ error: "error in assigning vehicle. ensure trip exists" });
-//     const log = {
-//       date: new Date(),
-//       userId,
-//       action: "assign",
-//       details: `trip assigned to vehicle - ${vehicleId}`,
-//       reason: `accepted request`,
-//     };
-//     const updateTrip = await TripModel.findByIdAndUpdate(
-//       { _id: tripId },
-//       { $push: { logs: log } },
-//       { new: true }
-//     );
-//     return res.status(200).send({ data: assignVehicle });
-//   } catch (error) {
-//     return res.status(500).send(error.message);
-//   }
-// };
+    if (!tripId) return res.status(400).send({ error: "tripId is required" });
+    if (!userId) return res.status(400).send({ error: "userId is required" });
+    if (!action) return res.status(400).send({ error: "action is required" });
+    const permitted = await canEditOrganisationTrip({ tripId, userId });
+    if (!permitted) {
+      return res.status(400).send({ error: "you cannot edit this trip" });
+    }
+    const trip = await TripModel.findById({ _id: tripId });
+    if (!trip) return res.status(400).send({ error: "trip not found" });
+    let timelineAction;
+    let log;
+
+    if (action === "assign vehicle") {
+      if (!vehicleId)
+        return res.status(400).send({ error: "vehicleId is required" });
+      const availableVehicle = await TruckModel.findOne({
+        _id: vehicleId,
+        status: "available",
+      });
+
+      if (!availableVehicle && trip?.vehicleId !== vehicleId) {
+        return res
+          .status(400)
+          .send({ error: "vehicle is not available or not found" });
+      }
+
+      log = {
+        date: new Date(),
+        userId,
+        action: "action",
+        details: `trip assigned to vehicle - ${vehicleId}`,
+        reason: `accepted request`,
+      };
+      timelineAction = {
+        date: new Date(),
+        userId,
+        action: "assign vehicle",
+        status: "done",
+      };
+      const assignVehicle = await TripModel.findByIdAndUpdate(
+        { _id: tripId },
+        {
+          $set: {
+            vehicleId,
+          },
+          $push: { logs: log, timeline: timelineAction },
+          status: "Vehicle Assigned",
+        },
+        { new: true }
+      );
+      if (!assignVehicle)
+        return res
+          .status(400)
+          .send({ error: "error in assigning vehicle. ensure trip exists" });
+      const upDateTruckStatus = await TruckModel.findByIdAndUpdate(
+        { _id: vehicleId },
+        { $set: { status: "On Trip" } },
+        { new: true }
+      );
+
+      return res.status(200).send({ data: assignVehicle });
+    }
+    if (action === "mark loaded") {
+      log = {
+        date: new Date(),
+        userId,
+        action: "action",
+        details: `trip loaded`,
+        reason: `loading completed`,
+      };
+      timelineAction = {
+        date: new Date(),
+        userId,
+        action: "mark loaded",
+        status: "done",
+      };
+      const loadTrip = await TripModel.findByIdAndUpdate(
+        { _id: tripId },
+        {
+          $set: { status: "Loaded" },
+          $push: { logs: log, timeline: timelineAction },
+        },
+        { new: true }
+      );
+      if (!loadTrip)
+        return res.status(400).send({ error: "error in loading trip" });
+      return res.status(200).send({ data: loadTrip });
+    }
+    if (action === "mark en route") {
+      const requestWaybil = trip?.requestedWaybilImageUrl?.link;
+      if (!requestWaybil)
+        return res
+          .status(400)
+          .send({ error: "Request waybill has to be uploaded first" });
+      log = {
+        date: new Date(),
+        userId,
+        action: "action",
+        details: `trip en route`,
+        reason: `trip started`,
+      };
+      timelineAction = {
+        date: new Date(),
+        userId,
+        action: "mark en route",
+        status: "done",
+      };
+      const enRouteTrip = await TripModel.findByIdAndUpdate(
+        { _id: tripId },
+        {
+          $set: { status: "En Route" },
+          $push: { logs: log, timeline: timelineAction },
+        },
+        { new: true }
+      );
+      if (!enRouteTrip)
+        return res.status(400).send({ error: "error in starting trip" });
+      return res.status(200).send({ data: enRouteTrip });
+    }
+    if (action === "mark arrived at destination") {
+      log = {
+        date: new Date(),
+        userId,
+        action: "action",
+        details: `vehicle at destination`,
+        reason: `vehicle arrived at destination`,
+      };
+      timelineAction = {
+        date: new Date(),
+        userId,
+        action: "mark arrived at destination",
+        status: "done",
+      };
+      const atDestinationTrip = await TripModel.findByIdAndUpdate(
+        { _id: tripId },
+        {
+          $set: { status: "At Destination" },
+          $push: { logs: log, timeline: timelineAction },
+        },
+        { new: true }
+      );
+      if (!atDestinationTrip)
+        return res
+          .status(400)
+          .send({ error: "error in updaing status to at destination" });
+      return res.status(200).send({ data: atDestinationTrip });
+    }
+    if (action === "mark delivered") {
+      const deliveredWaybil = trip?.deliveredWaybilImageUrl?.link;
+      if (!deliveredWaybil)
+        return res
+          .status(400)
+          .send({ error: "Signed delivered waybill has to be uploaded first" });
+      log = {
+        date: new Date(),
+        userId,
+        action: "action",
+        details: `delivered`,
+        reason: `trip completed`,
+      };
+      timelineAction = {
+        date: new Date(),
+        userId,
+        action: "delivered",
+        status: "done",
+      };
+      const deliveredTrip = await TripModel.findByIdAndUpdate(
+        { _id: tripId },
+        {
+          $set: { status: "Delivered" },
+          $push: { logs: log, timeline: timelineAction },
+        },
+        { new: true }
+      );
+      if (!deliveredTrip)
+        return res.status(400).send({ error: "error in completing trip" });
+      const upDateTruckStatus = await TruckModel.findByIdAndUpdate(
+        { _id: deliveredTrip.vehicleId },
+        { $set: { status: "available" } },
+        { new: true }
+      );
+      return res.status(200).send({ data: deliveredTrip });
+    }
+    if (action === "cancel") {
+      const timeline = trip?.timeline?.filter(
+        (item) => item?.action === "created"
+      );
+      if (!cancelReason)
+        return res.status(400).send({ error: "cancel reason is required" });
+      log = {
+        date: new Date(),
+        userId,
+        action: "action",
+        details: `trip cancelled`,
+        reason: cancelReason,
+      };
+      timelineAction = {
+        date: new Date(),
+        userId,
+        action: "cancel",
+        status: "done",
+      };
+      timeline.push(timelineAction);
+      const cancelTrip = await TripModel.findByIdAndUpdate(
+        { _id: tripId },
+        {
+          $set: { status: "Cancelled" },
+          timeline,
+          $unset: { vehicleId: 1 },
+        },
+
+        { new: true }
+      );
+      if (!cancelTrip)
+        return res.status(400).send({ error: "error in cancelling trip" });
+      if (trip?.vehicleId) {
+        const upDateTruckStatus = await TruckModel.findByIdAndUpdate(
+          { _id: trip.vehicleId },
+          { $set: { status: "available" } },
+          { new: true }
+        );
+      }
+      return res.status(200).send({ data: cancelTrip });
+    }
+    if (action === "resume") {
+      if (!resumeReason)
+        return res.status(400).send({ error: "resume reason is required" });
+      log = {
+        date: new Date(),
+        userId,
+        action: "action",
+        details: `trip resumed`,
+        reason: resumeReason,
+      };
+      const resumeTrip = await TripModel.findByIdAndUpdate(
+        { _id: tripId },
+        { $set: { status: "Pending" }, $push: { logs: log } },
+        { new: true }
+      );
+      if (!resumeTrip)
+        return res.status(400).send({ error: "error in resuming trip" });
+      return res.status(200).send({ data: resumeTrip });
+    }
+    return res.status(400).send({ error: "invalid action" });
+  } catch (error) {
+    return res.status(500).send(error.message);
+  }
+};
 
 module.exports = {
   createTrip,
@@ -800,4 +1168,6 @@ module.exports = {
   restoreTrips,
   updateTrip,
   getTripRemarks,
+  uploadWaybill,
+  tripAction,
 };
