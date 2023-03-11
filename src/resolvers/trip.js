@@ -3,6 +3,8 @@ const TripModel = require("../models/trip");
 const TruckModel = require("../models/truck");
 const VendorAgentModel = require("../models/vendorAgent");
 const CustomerModel = require("../models/customer");
+const OrganisationPartnerModel = require("../models/organisationPartner");
+const OrganisationProfileModel = require("../models/organisationProfile");
 const {
   canDeleteOrEditOrganisationTripRemark,
   canEditOrganisationTrip,
@@ -51,11 +53,65 @@ const deleteImageFromFirebase = async (name) => {
         return true;
       })
       .catch((err) => {
-        console.log("err is", err);
         return false;
       });
   }
 };
+const getPartnerTitle = (partner) => {
+  if (!partner) return null;
+  if (partner?.companyName) return partner?.companyName;
+
+  return `${partner?.firstName} ${partner?.lastName}`;
+};
+
+const attachPartnerToVehicle = async (vehicles, organisationId) => {
+  const organisation = await OrganisationProfileModel.findOne(
+    {
+      _id: organisationId,
+    },
+    { name: 1 }
+  );
+  console.log("org", organisation);
+
+  const partnerIds = vehicles.map((vehicle) => vehicle.assignedPartnerId);
+  const partners = await OrganisationPartnerModel.find({
+    _id: { $in: partnerIds },
+  }).lean();
+  const partnerMap = {};
+  partners.forEach((partner) => {
+    partnerMap[partner._id] = partner;
+  });
+  return vehicles.map((vehicle) => {
+    return {
+      ...vehicle,
+      transporter:
+        getPartnerTitle(partnerMap[vehicle.assignedPartnerId]) ||
+        organisation?.name ||
+        null,
+    };
+  });
+};
+const attachVehicle = async (trips, organisationId) => {
+  const vehicleIds = trips.map((trip) => trip.vehicleId);
+  const vehicles = await TruckModel.find(
+    {
+      _id: { $in: vehicleIds },
+    },
+    { assignedPartnerId: 1, regNo: 1 }
+  ).lean();
+  const attachPartners = await attachPartnerToVehicle(vehicles, organisationId);
+  const vehicleMap = {};
+  attachPartners.forEach((vehicle) => {
+    vehicleMap[vehicle._id] = vehicle;
+  });
+  return trips.map((trip) => {
+    return {
+      ...trip,
+      vehicle: vehicleMap[trip.vehicleId] || null,
+    };
+  });
+};
+
 const getTrip = async (req, res) => {
   try {
     const { _id, organisationId } = req.query;
@@ -64,7 +120,8 @@ const getTrip = async (req, res) => {
       return res.status(400).send({ error: "organisationId is required" });
     const trip = await TripModel.findOne({ _id, organisationId }).lean();
     if (!trip) return res.status(400).send({ error: "trip not found" });
-    return res.status(200).send({ data: trip });
+    const tripsWithVehicle = await attachVehicle([trip], organisationId);
+    return res.status(200).send({ data: tripsWithVehicle[0] });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -75,11 +132,15 @@ const getTrips = async (req, res) => {
     const { organisationId, disabled } = req.query;
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
-    const trips = await TripModel.find({
-      organisationId,
-      disabled: disabled || false,
-    }).lean();
-    return res.status(200).send({ data: trips });
+    const trips = await TripModel.find(
+      {
+        organisationId,
+        disabled: disabled || false,
+      },
+      { remarks: 0, logs: 0, timeline: 0 }
+    ).lean();
+    const tripsWithVehicle = await attachVehicle(trips, organisationId);
+    return res.status(200).send({ data: tripsWithVehicle });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -235,7 +296,7 @@ const updateTrip = async (req, res) => {
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
     if (!userId) return res.status(400).send({ error: "userId is required" });
-    console.log("reach here 1");
+
     const validUserId = await verifyUserId(userId, organisationId);
     if (!validUserId) {
       return res
@@ -247,7 +308,7 @@ const updateTrip = async (req, res) => {
     if (!permitted) {
       return res.status(400).send({ error: "you cannot edit this trip" });
     }
-    console.log("reach here 2");
+
     if (req?.body?.vehicleId) {
       const vehicle = await TruckModel.findOne({
         _id: req?.body?.vehicleId,
@@ -255,10 +316,10 @@ const updateTrip = async (req, res) => {
         disabled: false,
       }).lean();
       if (!vehicle) return res.status(400).send({ error: "vehicle not found" });
-      if (vehicle.status !== "available")
+      if (vehicle.status !== "Available")
         return res.status(400).send({ error: "vehicle not available" });
     }
-    console.log("reach here 3");
+
     if (vendorId) {
       const validVendorId = await verifyVendorAgentId(vendorId, organisationId);
       if (!validVendorId) {
@@ -267,7 +328,7 @@ const updateTrip = async (req, res) => {
           .send({ error: "vendorId is invalid for this organisation" });
       }
     }
-    console.log("reach here 4");
+
     const currentTrip = TripModel.findOne({ _id, organisationId }).lean();
     if (!currentTrip) return res.status(400).send({ error: "trip not found" });
 
@@ -323,7 +384,7 @@ const updateTrip = async (req, res) => {
         organisationId,
       });
       difference.push({
-        field: "customer",
+        field: "vendor",
         old: getName(oldVendor) || "not provided",
         new: getName(newVendor),
       });
@@ -378,7 +439,7 @@ const updateTrip = async (req, res) => {
         const updateOldVehicle = await TruckModel.findByIdAndUpdate(
           oldData?.vehicleId,
           {
-            status: "available",
+            status: "Available",
           },
           { new: true }
         );
@@ -438,13 +499,16 @@ const deleteRestoreTrips = async (trips, userId, disabledValue) => {
       const timeline = disabled?.timeline?.filter(
         (item) => item?.action === "created"
       );
-      console.log("about to delete 3");
+
       const updateLog = await TripModel.findByIdAndUpdate(
         disabled._id,
 
         {
           $push: { logs: log },
-          $set: { timeline: timeline, status: disabledValue ? "Deleted" : "Pending" },
+          $set: {
+            timeline: timeline,
+            status: disabledValue ? "Deleted" : "Pending",
+          },
           $unset: { vehicleId: 1 },
         },
         { new: true }
@@ -457,7 +521,7 @@ const deleteRestoreTrips = async (trips, userId, disabledValue) => {
         const updateVehicle = await TruckModel.findByIdAndUpdate(
           disabled?.vehicleId,
           {
-            status: "available",
+            status: "Available",
           },
           { new: true }
         );
@@ -669,7 +733,7 @@ const deleteTripRemark = async (req, res) => {
       reason: "deleted remark",
       details: `deleted remark on trip`,
     };
-    console.log("remarkId", remarkId);
+
     const updateRemark = await TripModel.findByIdAndUpdate(
       {
         _id: tripId,
@@ -904,8 +968,16 @@ const uploadWaybill = async (req, res) => {
 
 const tripAction = async (req, res) => {
   try {
-    const { tripId, vehicleId, userId, action, cancelReason, resumeReason } =
-      req.body;
+    const {
+      tripId,
+      vehicleId,
+      userId,
+      action,
+      cancelReason,
+      resumeReason,
+      actualFuelCost,
+      actualFuelLitres,
+    } = req.body;
 
     if (!tripId) return res.status(400).send({ error: "tripId is required" });
     if (!userId) return res.status(400).send({ error: "userId is required" });
@@ -924,7 +996,7 @@ const tripAction = async (req, res) => {
         return res.status(400).send({ error: "vehicleId is required" });
       const availableVehicle = await TruckModel.findOne({
         _id: vehicleId,
-        status: "available",
+        status: "Available",
       });
 
       if (!availableVehicle && trip?.vehicleId !== vehicleId) {
@@ -1076,7 +1148,12 @@ const tripAction = async (req, res) => {
       const deliveredTrip = await TripModel.findByIdAndUpdate(
         { _id: tripId },
         {
-          $set: { status: "Delivered" },
+          $set: {
+            status: "Delivered",
+            dropOffDate: new Date(),
+            actualFuelLitres,
+            actualFuelCost,
+          },
           $push: { logs: log, timeline: timelineAction },
         },
         { new: true }
@@ -1085,7 +1162,7 @@ const tripAction = async (req, res) => {
         return res.status(400).send({ error: "error in completing trip" });
       const upDateTruckStatus = await TruckModel.findByIdAndUpdate(
         { _id: deliveredTrip.vehicleId },
-        { $set: { status: "available" } },
+        { $set: { status: "Available" } },
         { new: true }
       );
       return res.status(200).send({ data: deliveredTrip });
@@ -1115,6 +1192,7 @@ const tripAction = async (req, res) => {
         {
           $set: { status: "Cancelled" },
           timeline,
+          $push: { logs: log },
           $unset: { vehicleId: 1 },
         },
 
@@ -1125,7 +1203,7 @@ const tripAction = async (req, res) => {
       if (trip?.vehicleId) {
         const upDateTruckStatus = await TruckModel.findByIdAndUpdate(
           { _id: trip.vehicleId },
-          { $set: { status: "available" } },
+          { $set: { status: "Available" } },
           { new: true }
         );
       }
