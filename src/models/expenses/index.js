@@ -5,12 +5,11 @@ const timestamp = require("mongoose-timestamp");
 const Expenses = new mongoose.Schema({
   organisationId: { type: String, required: true },
   expensesId: { type: String, required: true },
-  status: { type: String, default: "unpaid" },
   disabled: { type: Boolean, default: false },
   date: { type: String, required: true },
   vehicleId: { type: String },
   userId: { type: String, required: true },
-  tripId: { type: String, required: true },
+  tripId: { type: String},
   vendorId: { type: String },
   expenseType: { type: String, required: true },
   amount: { type: Number, required: true },

@@ -2,17 +2,16 @@
 const mongoose = require("mongoose");
 const timestamp = require("mongoose-timestamp");
 
-const IncomeSchema = new mongoose.Schema({
+const InvoiceSchema = new mongoose.Schema({
   organisationId: { type: String, required: true },
-  incomeId: { type: String, required: true },
-  invoiceId: { type: String },
+  invoiceId: { type: String, required: true },
   disabled: { type: Boolean, default: false },
-  date: { type: String, },
-  requestId: { type: String },
-  vendorId: { type: String },
-  amount: { type: Number},
-  remarks: {
-    type: [{ userId: String, remark: String, date: String }],
+  status: { type: String, default: "Unpaid" },
+  date: { type: String, required: true },
+  trips: { type: Array },
+  amount: { type: Number, required: true },
+  remark: {
+    type: { userId: String, remark: String, date: String },
     required: false,
   },
   logs: [
@@ -29,8 +28,8 @@ const IncomeSchema = new mongoose.Schema({
   ],
 });
 
-IncomeSchema.plugin(timestamp);
+InvoiceSchema.plugin(timestamp);
 
-const IncomeModel = mongoose.model("income", IncomeSchema, "income");
+const InvoiceModel = mongoose.model("invoice", InvoiceSchema, "invoice");
 
-module.exports = IncomeModel;
+module.exports = InvoiceModel;

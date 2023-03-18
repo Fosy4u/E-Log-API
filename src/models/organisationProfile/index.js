@@ -63,6 +63,7 @@ const OrganisationProfileSchema = new mongoose.Schema({
   regionalSettings: RegionalSettings,
   active: { type: Boolean, required: true, default: true },
 
+
   deletionReasons: {
     type: Array,
     default: [
@@ -73,37 +74,7 @@ const OrganisationProfileSchema = new mongoose.Schema({
       "stock re-evaluation",
     ],
   },
-  vendorAgentClassification: {
-    type: Array,
-    default: [
-      {
-        name: "Tools",
-        value: "Tools",
-        description:
-          "Allows vendor/agent to be listed on tools procurement",
-      },
-      {
-        name: "Trips Provider",
-        value: "Trips Provider",
-        description: "Allows vendor/agent to be listed on trips assignment",
-      },
-      {
-        name : "Fuel Provider",
-        value : "Fuel Provider",
-        description : "Allows vendor/agent to be listed on fuel procurement"
-      },
-      {
-        name : "Service Provider",
-        value : "Service Provider",
-        description : "Allows vendor/agent to be listed on service order"
-      },
-      {
-        name : "Vehicle Provider",
-        value : "Vehicle Provider",
-        description : "Allows vendor/agent to be listed on vehicle procurement"
-      }
-    ],
-  },
+  
   bankDetails: { type: [BankDetailSchema] },
 });
 

@@ -1,12 +1,13 @@
 const OrganisationProfileModel = require("../models/organisationProfile");
 const OrganisationUserModel = require("../models/organisationUsers");
-
+const TemplateModel = require("../models/template");
 
 const { storageRef } = require("../config/firebase"); // reference to our db
 const root = require("../../root");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
+const { deleteLocalFile } = require("../helpers/utils");
 
 //saving image to firebase storage
 const addImage = async (req, filename) => {
@@ -29,6 +30,11 @@ const addImage = async (req, filename) => {
       }
     );
     url = { link: storage[0].metadata.mediaLink, name: filename };
+    const deleteSourceFile = await deleteLocalFile(source);
+    const deleteResizedFile = await deleteLocalFile(
+      path.resolve(req.file.destination, "resized", filename)
+    );
+    await Promise.all([deleteSourceFile, deleteResizedFile]);
     return url;
   }
   return url;
@@ -40,9 +46,9 @@ const getOrganisationProfile = async (req, res) => {
 
     const organisation = await OrganisationProfileModel.findOne(params);
 
-    if (!organisation) return res.status(200).send({data : {}});
+    if (!organisation) return res.status(200).send({ data: {} });
 
-    return res.status(200).send({data : organisation});
+    return res.status(200).send({ data: organisation });
   } catch (error) {
     return res.status(500).send(error.message);
   }
@@ -60,8 +66,6 @@ const createOrganisationProfile = async (req, res) => {
           "problem with creating organisation. Contact Admin if this continues",
       });
 
- 
-
     const params = {
       firstName,
       lastName,
@@ -77,12 +81,17 @@ const createOrganisationProfile = async (req, res) => {
     if (!newUser) {
       return res.status(400).send({
         message:
-          "problem with creating organisation user. Contact FosyTech if this continues",
+          "problem with creating organisation user. Contact Nemfra Tech if this continues",
       });
     }
 
     console.log("new user successful", newUser);
-    return res.status(200).send({data : [newOrganisation, newUser]});
+    const template = new TemplateModel({
+      organisationId: newOrganisation._id,
+    });
+    const newTemplate = await template.save();
+
+    return res.status(200).send({ data: [newOrganisation, newUser] });
   } catch (error) {
     return res.status(500).send(error.message);
   }
@@ -208,7 +217,7 @@ const getBankDetails = async (req, res) => {
     // if (!bankDetails)
     //   return res.status(400).send({ message: "no bank " });
     console.log("update", bankDetails);
-    return res.status(200).send({data : bankDetails});
+    return res.status(200).send({ data: bankDetails });
   } catch (error) {
     return res.status(500).send(error.message);
   }
@@ -235,7 +244,7 @@ const deleteBankDetails = async (req, res) => {
     if (!deleteBankDetails)
       return res.status(400).send("couldnt delete bank detail");
 
-    return res.status(200).send({data : deleteBankDetails});
+    return res.status(200).send({ data: deleteBankDetails });
   } catch (error) {
     return res.status(500).send(error.message);
   }
@@ -302,7 +311,7 @@ const updateBankDetails = async (req, res) => {
     console.log("reched here");
     const result = await updateBank(organisationId, bankDetails, res);
 
-    return res.status(200).send({data : result});
+    return res.status(200).send({ data: result });
   } catch (error) {
     return res.status(500).send(error.message);
   }

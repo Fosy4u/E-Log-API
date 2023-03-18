@@ -1,4 +1,7 @@
 const ExpensesModel = require("../models/expenses");
+const VendorAgentModel = require("../models/vendorAgent");
+const TruckModel = require("../models/truck");
+const TripModel = require("../models/trip");
 const mongoose = require("mongoose");
 const { storageRef } = require("../config/firebase"); // reference to our db
 const root = require("../../root");
@@ -8,19 +11,21 @@ const sharp = require("sharp");
 const {
   canDeleteOrEditOrganisationExpensesRemark,
   canEditOrganisationExpenses,
+  canCreateOrganisationExpenses,
 } = require("../helpers/actionPermission");
+const { deleteLocalFile } = require("../helpers/utils");
 
 //saving image to firebase storage
-const addImage = async (req, filename) => {
+const addImage = async (destination, filename) => {
   let url = {};
   if (filename) {
     const source = path.join(root + "/uploads/" + filename);
     await sharp(source)
       .resize(1024, 1024)
       .jpeg({ quality: 90 })
-      .toFile(path.resolve(req.file.destination, "resized", filename));
+      .toFile(path.resolve(destination, "resized", filename));
     const storage = await storageRef.upload(
-      path.resolve(req.file.destination, "resized", filename),
+      path.resolve(destination, "resized", filename),
       {
         public: true,
         destination: `/drivers/${filename}`,
@@ -30,6 +35,11 @@ const addImage = async (req, filename) => {
       }
     );
     url = { link: storage[0].metadata.mediaLink, name: filename };
+    const deleteSourceFile = await deleteLocalFile(source);
+    const deleteResizedFile = await deleteLocalFile(
+      path.resolve(destination, "resized", filename)
+    );
+    await Promise.all([deleteSourceFile, deleteResizedFile]);
     return url;
   }
   return url;
@@ -43,26 +53,40 @@ const deleteImageFromFirebase = async (name) => {
       .then(() => {
         console.log("del is", name);
         return true;
+      })
+      .catch((err) => {
+        console.log("err is", err);
+        return false;
+      })
+      .catch((err) => {
+        console.log("err is", err);
+        return false;
       });
   }
 };
 
 const handleImageUpload = async (files) => {
+  const newDocuments = [];
+  const newPictures = [];
   if (files) {
-    const newDocuments = [];
-    const newPictures = [];
-    for (let i = 0; i < files.length; i++) {
+    for (let i = 0; i < files?.length; i++) {
       const file = files[i];
+
       const filename = file.filename;
-      const url = await addImage(req, filename);
-      if (filename === "documents") {
+      const fieldname = file.fieldname;
+      const destination = file.destination;
+
+      const url = await addImage(destination, filename);
+
+      if (fieldname === "documents") {
         newDocuments.push(url);
       }
-      if (filename === "pictures") {
+      if (fieldname === "pictures") {
         newPictures.push(url);
       }
     }
   }
+
   return { newDocuments, newPictures };
 };
 
@@ -80,7 +104,7 @@ const generateUniqueCode = async (organisationId) => {
     const exist = await ExpensesModel.findOne(
       {
         organisationId,
-        requestId: code,
+        expensesId: code,
       },
       { lean: true }
     );
@@ -95,6 +119,7 @@ const generateUniqueCode = async (organisationId) => {
   return code.toString();
 };
 const getName = (contact) => {
+  if (!contact) return null;
   if (contact?.companyName) return contact?.companyName;
 
   return `${contact?.firstName} ${contact?.lastName}`;
@@ -110,21 +135,31 @@ const createExpenses = async (req, res) => {
         error: "Please provide organisation id",
       });
     }
+
     if (!amount)
       return res.status(400).json({ error: "Please provide amount" });
     if (!expenseType)
       return res.status(400).json({ error: "Please provide expense type" });
     if (!date) return res.status(400).json({ error: "Please provide date" });
+
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
+    const param = { organisationId, userId };
+    const canPerformAction = await canCreateOrganisationExpenses(param);
+    if (!canPerformAction)
+      return res.status(400).send({
+        error: "you dont have the permission to carry out this request",
+      });
+
     const expensesId = await generateUniqueCode(organisationId);
+
     const log = {
       date: new Date(),
       userId: userId,
       action: "create",
-      details: `Expenses - ${saveExpenses.expensesId} created`,
+      details: `Expenses -  created`,
       reason: `added new expenses`,
     };
     let remarks = [];
@@ -138,16 +173,19 @@ const createExpenses = async (req, res) => {
     }
     let params;
 
-    if (req.files) {
+    if (req.files?.length > 0) {
       let documents = [];
       let pictures = [];
-      const upload = await handleImageUpload(req.files);
+      const upload = await handleImageUpload([
+        ...req.files?.documents,
+        ...req.files?.pictures,
+      ]);
 
-      const { newDocuments, newPictures } = await Promise.all([upload]);
-      if (newDocuments.length > 0 || newPictures.length > 0) {
-        documents = newDocuments;
-        pictures = newPictures;
-      }
+      const docs = await Promise.all([upload]);
+      const { newDocuments, newPictures } = docs[0];
+
+      documents = newDocuments || [];
+      pictures = newPictures || [];
 
       params = {
         ...req.body,
@@ -183,29 +221,89 @@ const createExpenses = async (req, res) => {
   }
 };
 
+const attachVehicleAndVendor = async (expenses, organisationId) => {
+  const vehicleIds = expenses.map((expense) => {
+    if (expense.vehicleId && expense.vehicleId !== "") {
+      return expense.vehicleId;
+    } else {
+      return null;
+    }
+  });
+
+  const vehicles = await TruckModel.find(
+    {
+      _id: { $in: vehicleIds },
+    },
+    { assignedPartnerId: 1, regNo: 1 }
+  ).lean();
+  const vendorIds = expenses.map((expense) => {
+    if (expense.vendorId && expense.vendorId !== "") {
+      return expense.vendorId;
+    } else {
+      return null;
+    }
+  });
+  const vendors = await VendorAgentModel.find(
+    { _id: { $in: vendorIds } },
+    { companyName: 1, firstName: 1, lastName: 1 }
+  ).lean();
+  const tripIds = expenses.map((expense) => {
+    if (expense.tripId && expense.tripId !== "") {
+      return expense.tripId;
+    } else {
+      return null;
+    }
+  });
+  const trips = await TripModel.find(
+    { requestId: { $in: tripIds } },
+    { status: 1, requestId: 1 }
+  ).lean();
+  const expensesWithVehicleAndTrip = expenses.map((expense) => {
+    const vehicle = vehicles.find(
+      (vehicle) => vehicle._id == expense.vehicleId
+    );
+    const vendor = vendors.find((vendor) => vendor._id == expense.vendorId);
+    const vendorName = getName(vendor);
+    console.log(vendorName);
+    const trip = trips.find((trip) => trip.requestId == expense.tripId);
+    return {
+      ...expense,
+      vehicle: vehicle,
+      vendorName,
+      trip: trip,
+    };
+  });
+  return expensesWithVehicleAndTrip;
+};
+
 const getExpenses = async (req, res) => {
-  const { organisationId, disabled } = req.body;
+  const { organisationId, disabled } = req.query;
   try {
     if (!organisationId) {
       return res.status(400).json({
         error: "Please provide organisation id",
       });
     }
-    const expenses = await ExpensesModel.find(
-      {
-        organisationId,
-        disabled: disabled ? disabled : false,
-      },
-      { lean: true }
-    );
+    const expenses = await ExpensesModel.find({
+      organisationId,
+      disabled: disabled ? disabled : false,
+    }).lean();
     if (!expenses)
       return res
         .status(401)
         .json({ error: "Internal error in getting expenses" });
 
-    return res
-      .status(200)
-      .send({ message: "Expenses fetched successfully", data: expenses });
+    const expensesWithVehicle = await attachVehicleAndVendor(
+      expenses,
+      organisationId
+    );
+
+    return res.status(200).send({
+      message: "Expenses fetched successfully",
+      data: expensesWithVehicle.sort(function (a, b) {
+        return new Date(b?.date) - new Date(a?.date);
+      }),
+    });
   } catch (error) {
     console.log(error);
     return res.status(500).json({
@@ -217,25 +315,25 @@ const getExpenses = async (req, res) => {
 const getOneExpenses = async (req, res) => {
   try {
     const { _id, organisationId } = req.query;
-    if (!_id) return res.status(400).send({ error: "trip _id is required" });
+    if (!_id) return res.status(400).send({ error: "expense _id is required" });
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
-    const trip = await ExpensesModel.findOne({ _id, organisationId }).lean();
-    if (!trip) return res.status(400).send({ error: "trip not found" });
-    return res.status(200).send({ data: trip });
+    const expense = await ExpensesModel.findOne({ _id, organisationId }).lean();
+    if (!expense) return res.status(400).send({ error: "expense not found" });
+    const expenseWithVehicle = await attachVehicleAndVendor(
+      [expense],
+      organisationId
+    );
+    return res.status(200).send({ data: expenseWithVehicle[0] });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
 };
 
 const updateExpenses = async (req, res) => {
-  const { _id, amount, expenseType, date, userId } = req.body;
+  const { _id, userId, organisationId } = req.body;
   try {
-    if (!amount)
-      return res.status(400).json({ error: "Please provide amount" });
-    if (!expenseType)
-      return res.status(400).json({ error: "Please provide expense type" });
-    if (!date) return res.status(400).json({ error: "Please provide date" });
+    if (!_id) return res.status(400).json({ error: "Please provide _id" });
     if (!userId)
       return res
         .status(400)
@@ -283,11 +381,11 @@ const updateExpenses = async (req, res) => {
     }
 
     if (req.body?.vehicleId && req.body?.vehicleId !== oldData?.vehicleId) {
-      const oldVehicle = await VehicleModel.findOne({
+      const oldVehicle = await TruckModel.findOne({
         _id: oldData?.vehicleId,
         organisationId,
       });
-      const newVehicle = await VehicleModel.findOne({
+      const newVehicle = await TruckModel.findOne({
         _id: req.body?.vehicleId,
         organisationId,
       });
@@ -301,8 +399,8 @@ const updateExpenses = async (req, res) => {
     const log = {
       date: new Date(),
       userId: userId,
-      action: "update",
-      details: `Expenses - ${expensesId} updated`,
+      action: "edit",
+      details: `Expenses - updated`,
       reason: `updated expenses`,
       difference,
     };
@@ -335,84 +433,52 @@ const updateExpenses = async (req, res) => {
     });
   }
 };
-
+const validateExpenses = async (ids) => {
+  const expenses = await ExpensesModel.find({ _id: { $in: ids } });
+  if (expenses.length !== ids.length) {
+    return false;
+  }
+  return true;
+};
+const disableExpenses = async (ids, userId) => {
+  const log = {
+    date: new Date(),
+    userId: userId,
+    action: "delete",
+    details: `Expenses -  deleted`,
+    reason: `deleted expenses`,
+  };
+  const updateExp = await ExpensesModel.updateMany(
+    { _id: { $in: ids } },
+    { disabled: true, $push: { logs: log } }
+  );
+  if (!updateExp) return false;
+  return true;
+};
+// const getExpensesDocumentsAndPictureNames = async (ids) => {
+//   const expenses = await ExpensesModel.find({ _id: { $in: ids } });
+//   const documentNames = expenses.map((expense) => expense?.documents?.map((doc) => doc?.name));
+//   const pictureNames = expenses.map((expense) => expense?.pictures?.map((pic) => pic?.name));
+//   return { documentNames, pictureNames };
+// }
 const deleteExpenses = async (req, res) => {
-  const { expensesId, userId, organisationId } = req.body;
+  const { ids, userId } = req.body;
   try {
-    if (!expensesId)
-      return res.status(400).json({ error: "Please provide expenses id" });
+    if (!ids || ids.length === 0)
+      return res.status(400).send({ error: "No expense id is provided" });
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-    if (!organisationId)
-      return res.status(400).json({ error: "Please provide organisation id" });
-    const log = {
-      date: new Date(),
-      userId: userId,
-      action: "delete",
-      details: `Expenses - ${expensesId} deleted`,
-      reason: `deleted expenses`,
-    };
-    const updateExpenses = await ExpensesModel.findOneAndUpdate(
-      { expensesId, organisationId },
-      {
-        disabled: true,
-        logs: [log],
-      },
-      { new: true }
-    );
-    if (!updateExpenses)
-      return res
-        .status(401)
-        .json({ error: "Internal error in deleting expenses" });
-
+    const isValid = await validateExpenses(ids);
+    if (!isValid)
+      return res.status(400).send({ error: "Invalid expense id is provided" });
+    const isDisabled = await disableExpenses(ids, userId);
+    if (!isDisabled)
+      return res.status(400).send({ error: "Error in deleting expenses" });
     return res
       .status(200)
-      .send({ message: "Expenses deleted successfully", data: updateExpenses });
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json({
-      message: "Internal server error",
-    });
-  }
-};
-
-const restoreExpenses = async (req, res) => {
-  const { expensesId, userId, organisationId } = req.body;
-  try {
-    if (!expensesId)
-      return res.status(400).json({ error: "Please provide expenses id" });
-    if (!userId)
-      return res
-        .status(400)
-        .json({ error: "Please provide logged in user id" });
-    if (!organisationId)
-      return res.status(400).json({ error: "Please provide organisation id" });
-    const log = {
-      date: new Date(),
-      userId: userId,
-      action: "restore",
-      details: `Expenses - ${expensesId} restored`,
-      reason: `restored expenses`,
-    };
-    const updateExpenses = await ExpensesModel.findOneAndUpdate(
-      { expensesId, organisationId },
-      {
-        disabled: false,
-        logs: [log],
-      },
-      { new: true }
-    );
-    if (!updateExpenses)
-      return res
-        .status(401)
-        .json({ error: "Internal error in restoring expenses" });
-
-    return res.status(200).send({
-      message: "Expenses restored successfully",
-      data: updateExpenses,
-    });
+      .send({ message: "Expenses deleted successfully", data: ids });
   } catch (error) {
     console.log(error);
     return res.status(500).json({
@@ -532,9 +598,9 @@ const addExpensesRemark = async (req, res) => {
       userId,
       action: "remark",
       reason: "added remark",
-      details: `added remark on expenses - ${expenses.requestId}`,
+      details: `added remark on expenses`,
     };
-    const updateExpenses = await CustomerModel.findByIdAndUpdate(
+    const updateExpenses = await ExpensesModel.findByIdAndUpdate(
       { _id },
       { $push: { logs: log } },
       { new: true }
@@ -576,7 +642,7 @@ const deleteExpensesRemark = async (req, res) => {
       reason: "deleted remark",
       details: `deleted remark on expenses`,
     };
-    console.log("remarkId", remarkId);
+
     const updateRemark = await ExpensesModel.findByIdAndUpdate(
       {
         _id: expensesId,
@@ -639,7 +705,7 @@ const editExpensesRemark = async (req, res) => {
       reason: "edited remark",
       details: `edited remark on expenses`,
     };
-    const updateExpenses = await CustomerModel.findByIdAndUpdate(
+    const updateExpenses = await ExpensesModel.findByIdAndUpdate(
       { _id: expensesId },
       { $push: { logs: log } },
       { new: true }
@@ -743,10 +809,18 @@ const uploadImages = async (req, res) => {
 
     const expenses = await ExpensesModel.findById({ _id: expensesId });
     if (!expenses) return res.status(400).send({ error: "expenses not found" });
+    const param = { expensesId, userId };
+    const canPerformAction = await canEditOrganisationExpenses(param);
+    if (!canPerformAction)
+      return res.status(400).send({
+        error: "you dont have the permission to carry out this request",
+      });
+    const pictures = req.files?.pictures || [];
+    const documents = req.files?.documents || [];
+    const upload = await handleImageUpload([...documents, ...pictures]);
 
-    const upload = await handleImageUpload(req.files);
-
-    const { newDocuments, newPictures } = await Promise.all([upload]);
+    const docs = await Promise.all([upload]);
+    const { newDocuments, newPictures } = docs[0];
     const log = {
       date: new Date(),
       userId,
@@ -859,7 +933,6 @@ module.exports = {
   getOneExpenses,
   updateExpenses,
   deleteExpenses,
-  restoreExpenses,
   uploadImages,
   deleteExpensesImage,
   getExpensesLogs,

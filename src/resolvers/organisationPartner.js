@@ -8,6 +8,7 @@ const root = require("../../root");
 const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
 const { storageRef } = require("../config/firebase"); // reference to our db
+const { deleteLocalFile } = require("../helpers/utils");
 
 //saving image to firebase storage
 const addImage = async (req, filename) => {
@@ -29,6 +30,11 @@ const addImage = async (req, filename) => {
       }
     );
     url = { link: storage[0].metadata.mediaLink, name: filename };
+    const deleteSourceFile = await deleteLocalFile(source);
+    const deleteResizedFile = await deleteLocalFile(
+      path.resolve(req.file.destination, "resized", filename)
+    );
+    await Promise.all([deleteSourceFile, deleteResizedFile]);
     return url;
   }
   return url;
@@ -64,7 +70,10 @@ const deleteImageFromFirebase = async (name) => {
       .catch((err) => {
         console.log("err is", err);
         return false;
-      });
+      }).catch((err) => {
+        console.log("err is", err);
+        return false;
+      });;
   }
 };
 

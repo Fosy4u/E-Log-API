@@ -14,6 +14,9 @@ const customerResolver = require("../resolvers/customer");
 const tripResolver = require("../resolvers/trip");
 const vendorAgentResolver = require("../resolvers/vendorAgent");
 const expensesResolver = require("../resolvers/expenses");
+const templateResolver = require("../resolvers/template");
+const incomeResolver = require("../resolvers/income");
+const invoiceResolver = require("../resolvers/invoice");
 
 let routes = (app) => {
   router.get("/", homeResolver.getHome);
@@ -300,6 +303,7 @@ let routes = (app) => {
     tripResolver.createTrip
   );
   router.get("/trips", authMiddleware, tripResolver.getTrips);
+  router.get("/trips/univoiced", authMiddleware, tripResolver.unInvoicedTrips);
   router.get("/trip", authMiddleware, tripResolver.getTrip);
   router.get("/trip/remarks", authMiddleware, tripResolver.getTripRemarks);
   router.get("/trip/logs", authMiddleware, tripResolver.getTripLogs);
@@ -333,18 +337,148 @@ let routes = (app) => {
     handleMoreFieldsUploads,
     expensesResolver.createExpenses
   );
-  router.get( "/expenses", authMiddleware, expensesResolver.getExpenses);
-  router.get( "/oneExpenses", authMiddleware, expensesResolver.getOneExpenses);
-  router.get( "/expenses/remarks", authMiddleware, expensesResolver.getExpensesRemarks);
-  router.get( "/expenses/logs", authMiddleware, expensesResolver.getExpensesLogs);
-  router.put( "/expenses/edit", authMiddleware, expensesResolver.updateExpenses);
-  router.put( "/expenses/delete", authMiddleware, expensesResolver.deleteExpenses);
-  router.put( "/expenses/restore", authMiddleware, expensesResolver.restoreExpenses);
-  router.put( "/expenses/addRemark", authMiddleware, expensesResolver.addExpensesRemark);
-  router.put( "/expenses/deleteRemark", authMiddleware, expensesResolver.deleteExpensesRemark);
-  router.put( "/expenses/editRemark", authMiddleware, expensesResolver.editExpensesRemark);
-  router.put( "/expenses/uploads", authMiddleware, expensesResolver.uploadImages);
-  router.put( "/expenses/deleteUploads", authMiddleware, expensesResolver.deleteExpensesImage);
+  router.get("/expenses", authMiddleware, expensesResolver.getExpenses);
+  router.get("/oneExpenses", authMiddleware, expensesResolver.getOneExpenses);
+  router.get(
+    "/expenses/remarks",
+    authMiddleware,
+    expensesResolver.getExpensesRemarks
+  );
+  router.get(
+    "/expenses/logs",
+    authMiddleware,
+    expensesResolver.getExpensesLogs
+  );
+  router.put(
+    "/expenses/edit",
+    authMiddleware,
+    handleMoreFieldsUploads,
+    expensesResolver.updateExpenses
+  );
+  router.put(
+    "/expenses/delete",
+    authMiddleware,
+    expensesResolver.deleteExpenses
+  );
+
+  router.put(
+    "/expenses/addRemark",
+    authMiddleware,
+    expensesResolver.addExpensesRemark
+  );
+  router.put(
+    "/expenses/deleteRemark",
+    authMiddleware,
+    expensesResolver.deleteExpensesRemark
+  );
+  router.put(
+    "/expenses/editRemark",
+    authMiddleware,
+    expensesResolver.editExpensesRemark
+  );
+  router.put(
+    "/expenses/uploads",
+    authMiddleware,
+    handleMoreFieldsUploads,
+    expensesResolver.uploadImages
+  );
+  router.put(
+    "/expenses/deleteUploads",
+    authMiddleware,
+    expensesResolver.deleteExpensesImage
+  );
+  //Income
+
+  router.post(
+    "/income/create",
+    authMiddleware,
+
+    incomeResolver.createIncome
+  );
+  router.get("/incomes", authMiddleware, incomeResolver.getIncomes);
+  router.get("/income", authMiddleware, incomeResolver.getIncome);
+  router.get(
+    "/income/remarks",
+    authMiddleware,
+    incomeResolver.getIncomeRemarks
+  );
+  router.get("/income/logs", authMiddleware, incomeResolver.getIncomeLogs);
+  router.put(
+    "/income/edit",
+    authMiddleware,
+
+    incomeResolver.updateIncome
+  );
+  router.put("/income/delete", authMiddleware, incomeResolver.deleteIncomes);
+
+  router.put(
+    "/income/addRemark",
+    authMiddleware,
+    incomeResolver.addIncomeRemark
+  );
+  router.put(
+    "/income/deleteRemark",
+    authMiddleware,
+    incomeResolver.deleteIncomeRemark
+  );
+  router.put(
+    "/income/editRemark",
+    authMiddleware,
+    incomeResolver.editIncomeRemark
+  );
+
+
+
+
+  //Invoice
+
+  router.post(
+    "/invoice/create",
+    authMiddleware,
+
+    invoiceResolver.createInvoice
+  );
+  router.get("/invoices", authMiddleware, invoiceResolver.getInvoices);
+  router.get("/invoice", authMiddleware, invoiceResolver.getInvoice);
+  router.get(
+    "/invoice/remarks",
+    authMiddleware,
+    invoiceResolver.getInvoiceRemarks
+  );
+  router.get("/invoice/logs", authMiddleware, invoiceResolver.getInvoiceLogs);
+  router.put(
+    "/invoice/edit",
+    authMiddleware,
+
+    invoiceResolver.updateInvoice
+  );
+  router.put("/invoice/delete", authMiddleware, invoiceResolver.deleteInvoices);
+
+  router.put(
+    "/invoice/addRemark",
+    authMiddleware,
+    invoiceResolver.addInvoiceRemark
+  );
+  router.put(
+    "/invoice/deleteRemark",
+    authMiddleware,
+    invoiceResolver.deleteInvoiceRemark
+  );
+  router.put(
+    "/invoice/editRemark",
+    authMiddleware,
+    invoiceResolver.editInvoiceRemark
+  );
+
+
+
+
+
+
+
+
+  //Template
+  router.get("/template", templateResolver.getTemplate);
 
   //OrganisationContact
   router.post(

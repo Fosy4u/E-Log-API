@@ -5,11 +5,13 @@ const VendorAgentModel = require("../models/vendorAgent");
 const CustomerModel = require("../models/customer");
 const OrganisationPartnerModel = require("../models/organisationPartner");
 const OrganisationProfileModel = require("../models/organisationProfile");
+const InvoiceModel = require("../models/invoice");
 const { deleteLocalFile } = require("../helpers/utils");
 const {
   canDeleteOrEditOrganisationTripRemark,
   canEditOrganisationTrip,
 } = require("../helpers/actionPermission");
+
 const {
   verifyUserId,
   verifyVehicleId,
@@ -45,7 +47,7 @@ const addImage = async (req, filename) => {
     const deleteResizedFile = await deleteLocalFile(
       path.resolve(req.file.destination, "resized", filename)
     );
-
+    await Promise.all([deleteSourceFile, deleteResizedFile]);
     return url;
   }
   return url;
@@ -60,9 +62,33 @@ const deleteImageFromFirebase = async (name) => {
       })
       .catch((err) => {
         return false;
+      })
+      .catch((err) => {
+        console.log("err is", err);
+        return false;
       });
   }
 };
+
+const getUninvoicedWaybills = async (trips) => {
+  const tripIds = trips.map((trip) => trip.requestId);
+  const invoiced = await InvoiceModel.find({
+    trips: { $in: tripIds },
+  }).lean();
+  const invoicedTripIds = invoiced.map((invoice) => invoice.trips);
+  const invoicedTripIdsFlat = invoicedTripIds.flat();
+  const unInvoicedTrips = trips.filter((trip) => {
+    return !invoicedTripIdsFlat.includes(trip.requestId);
+  });
+  return unInvoicedTrips;
+  // const unInvoicedTripIds = unInvoiced.map((invoice) => invoice.trips);
+  // const unInvoicedTripIdsFlat = unInvoicedTripIds.flat();
+  // const unInvoicedTrips = trips.filter((trip) => {
+  //   return unInvoicedTripIdsFlat.includes(trip.tripId);
+  // });
+  // return unInvoicedTrips;
+};
+
 const getPartnerTitle = (partner) => {
   if (!partner) return null;
   if (partner?.companyName) return partner?.companyName;
@@ -146,7 +172,36 @@ const getTrips = async (req, res) => {
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
     const tripsWithVehicle = await attachVehicle(trips, organisationId);
-    return res.status(200).send({ data: tripsWithVehicle });
+    return res.status(200).send({
+      data: tripsWithVehicle.sort(function (a, b) {
+        return b.createdAt - a.createdAt;
+      }),
+    });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+
+const unInvoicedTrips = async (req, res) => {
+  try {
+    const { organisationId, disabled } = req.query;
+    if (!organisationId)
+      return res.status(400).send({ error: "organisationId is required" });
+    const trips = await TripModel.find(
+      {
+        organisationId,
+        disabled: disabled || false,
+        status_lower: "delivered",
+      },
+      { remarks: 0, logs: 0, timeline: 0 }
+    ).lean();
+
+    const filterUnInvoicedTrips = await getUninvoicedWaybills(trips);
+    return res.status(200).send({
+      data: filterUnInvoicedTrips.sort(function (a, b) {
+        return b.createdAt - a.createdAt;
+      }),
+    });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -186,7 +241,7 @@ const createTrip = async (req, res) => {
     organisationId,
     userId,
     remark,
-
+    quantity,
     productName,
     customerId,
     pickupAddress,
@@ -215,6 +270,8 @@ const createTrip = async (req, res) => {
       return res.status(400).send({ error: "dropOffAddress is required" });
 
     if (!price) return res.status(400).send({ error: "price is required" });
+    if (!quantity)
+      return res.status(400).send({ error: "quantity is required" });
     if (isVendorRequested && !vendorId)
       return res.status(400).send({ error: "vendorId is required" });
 
@@ -894,10 +951,17 @@ const getTripRemarks = async (req, res) => {
 const uploadWaybill = async (req, res) => {
   try {
     if (!req.file) return res.status(400).send({ error: "file is required" });
-    const { _id, userId, field } = req.body;
+    const { _id, userId, field, waybillNumber, confirmWaybillNumber } =
+      req.body;
     if (!_id) return res.status(400).send({ error: "tripId is required" });
     if (!userId) return res.status(400).send({ error: "userId is required" });
     if (!field) return res.status(400).send({ error: "field is required" });
+    if (!waybillNumber && field === "requestedWaybilImageUrl")
+      return res.status(400).send({ error: "waybillNumber is required" });
+    if (!confirmWaybillNumber && field === "deliveredWaybilImageUrl")
+      return res
+        .status(400)
+        .send({ error: "confirmWaybillNumber is required" });
     if (
       field !== "deliveredWaybilImageUrl" &&
       field !== "requestedWaybilImageUrl"
@@ -947,6 +1011,13 @@ const uploadWaybill = async (req, res) => {
         oldValue: trip.requestedWaybilImageUrl?.name,
         newValue: imageUrl?.name,
       });
+      if (waybillNumber !== trip.waybillNumber) {
+        difference.push({
+          field: "waybillNumber",
+          oldValue: trip.waybillNumber,
+          newValue: waybillNumber,
+        });
+      }
       log = {
         date: new Date(),
         userId,
@@ -958,7 +1029,11 @@ const uploadWaybill = async (req, res) => {
       oldImageName = trip?.requestedWaybilImageUrl?.name;
       updateTrip = await TripModel.findByIdAndUpdate(
         { _id },
-        { requestedWaybilImageUrl: imageUrl, $push: { logs: log } },
+        {
+          requestedWaybilImageUrl: imageUrl,
+          waybillNumber,
+          $push: { logs: log },
+        },
         { new: true }
       );
       if (!updateTrip)
@@ -1075,10 +1150,12 @@ const tripAction = async (req, res) => {
     }
     if (action === "mark en route") {
       const requestWaybil = trip?.requestedWaybilImageUrl?.link;
-      if (!requestWaybil)
-        return res
-          .status(400)
-          .send({ error: "Request waybill has to be uploaded first" });
+      const waybillNumber = trip?.waybillNumber;
+      if (!requestWaybil || !waybillNumber)
+        return res.status(400).send({
+          error:
+            "Request waybill has to be uploaded first with waybillNumber recorded",
+        });
       log = {
         date: new Date(),
         userId,
@@ -1244,6 +1321,7 @@ module.exports = {
   createTrip,
   getTrip,
   getTrips,
+  unInvoicedTrips,
   getTripLogs,
   addTripRemark,
   deleteTripRemark,

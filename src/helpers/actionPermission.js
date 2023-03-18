@@ -4,6 +4,8 @@ const TripModel = require("../models/trip");
 const VendorAgentModel = require("../models/vendorAgent");
 const OrganisationUserModel = require("../models/organisationUsers");
 const ExpensesModel = require("../models/expenses");
+const IncomeModel = require("../models/income");
+const InvoiceModel = require("../models/invoice");
 
 const canDeleteOrEditOrganisationPartnerRemark = async (param) => {
   const { partnerId, remarkId, userId } = param;
@@ -70,29 +72,35 @@ const canDeleteOrEditOrganisationTripRemark = async (param) => {
   return canPerformAction;
 };
 const canEditOrganisationTrip = async (param) => {
-  const { tripId,  userId } = param;
+  const { tripId, userId } = param;
   let canPerformAction = false;
   const trip = await TripModel.findOne({
     _id: tripId,
   });
-const organisationId = trip?.organisationId;
-const user = await OrganisationUserModel.findOne({ _id: userId, organisationId });
-if (user) {
-  canPerformAction = true;
-}
+  const organisationId = trip?.organisationId;
+  const user = await OrganisationUserModel.findOne({
+    _id: userId,
+    organisationId,
+  });
+  if (user) {
+    canPerformAction = true;
+  }
   return canPerformAction;
 };
 
 const canDeleteOrEditOrganisationExpensesRemark = async (param) => {
   const { expensesId, remarkId, userId } = param;
+
   let canPerformAction = false;
-  const expenses = await TripModel.findOne({
+  const expenses = await ExpensesModel.findOne({
     _id: expensesId,
   });
-  if (expenses.remarks?.length > 0) {
+
+  if (expenses?.remarks?.length > 0) {
     const remark = expenses.remarks.find(
       (remark) => remark._id.toString() === remarkId
     );
+    console.log(remark);
     if (remark) {
       canPerformAction = remark.userId.toString() === userId;
     }
@@ -100,16 +108,118 @@ const canDeleteOrEditOrganisationExpensesRemark = async (param) => {
   return canPerformAction;
 };
 const canEditOrganisationExpenses = async (param) => {
-  const { expensesId,  userId } = param;
+  const { expensesId, userId } = param;
   let canPerformAction = false;
   const expenses = await ExpensesModel.findOne({
     _id: expensesId,
   });
-const organisationId = expenses?.organisationId;
-const user = await OrganisationUserModel.findOne({ _id: userId, organisationId });
-if (user) {
-  canPerformAction = true;
-}
+  const organisationId = expenses?.organisationId;
+  const user = await OrganisationUserModel.findOne({
+    _id: userId,
+    organisationId,
+  });
+  if (user) {
+    canPerformAction = true;
+  }
+  return canPerformAction;
+};
+const canCreateOrganisationExpenses = async (param) => {
+  const { organisationId, userId } = param;
+
+  let canPerformAction = false;
+  const user = await OrganisationUserModel.findOne({ _id: userId });
+  if (user?.organisationId.toString() === organisationId) {
+    canPerformAction = true;
+  }
+  return canPerformAction;
+};
+
+const canDeleteOrEditOrganisationIncomeRemark = async (param) => {
+  const { incomeId, remarkId, userId } = param;
+
+  let canPerformAction = false;
+  const income = await IncomeModel.findOne({
+    _id: incomeId,
+  });
+
+  if (income?.remarks?.length > 0) {
+    const remark = income.remarks.find(
+      (remark) => remark._id.toString() === remarkId
+    );
+    console.log(remark);
+    if (remark) {
+      canPerformAction = remark.userId.toString() === userId;
+    }
+  }
+  return canPerformAction;
+};
+const canCreateOrganisationIncome = async (param) => {
+  const { organisationId, userId } = param;
+  let canPerformAction = false;
+  const user = await OrganisationUserModel.findOne({ _id: userId });
+  if (user?.organisationId.toString() === organisationId) {
+    canPerformAction = true;
+  }
+  return canPerformAction;
+};
+const canEditOrganisationIncome = async (param) => {
+  const { incomeId, userId } = param;
+  let canPerformAction = false;
+  const income = await IncomeModel.findOne({
+    _id: incomeId,
+  });
+  const organisationId = income?.organisationId;
+  const user = await OrganisationUserModel.findOne({
+    _id: userId,
+    organisationId,
+  });
+  if (user) {
+    canPerformAction = true;
+  }
+  return canPerformAction;
+};
+const canDeleteOrEditOrganisationInvoiceRemark = async (param) => {
+  const { invoiceId, remarkId, userId } = param;
+
+  let canPerformAction = false;
+  const invoice = await InvoiceModel.findOne({
+    _id: invoiceId,
+  });
+
+  if (invoice?.remarks?.length > 0) {
+    const remark = invoice.remarks.find(
+      (remark) => remark._id.toString() === remarkId
+    );
+    console.log(remark);
+    if (remark) {
+      canPerformAction = remark.userId.toString() === userId;
+    }
+  }
+  return canPerformAction;
+};
+const canCreateOrganisationInvoice = async (param) => {
+  const { organisationId, userId } = param;
+  let canPerformAction = false;
+  const user = await OrganisationUserModel.findOne({ _id: userId });
+  if (user?.organisationId.toString() === organisationId) {
+    canPerformAction = true;
+  }
+  return canPerformAction;
+};
+const canEditOrganisationInvoice = async (param) => {
+  const { invoiceId, userId } = param;
+  let canPerformAction = false;
+  const invoice = await InvoiceModel.findOne({
+    _id: invoiceId,
+  });
+  const organisationId = invoice?.organisationId;
+  const user = await OrganisationUserModel.findOne({
+    _id: userId,
+    organisationId,
+  });
+  if (user) {
+    canPerformAction = true;
+  }
   return canPerformAction;
 };
 
@@ -120,5 +230,12 @@ module.exports = {
   canDeleteOrEditOrganisationVendorAgentRemark,
   canEditOrganisationTrip,
   canDeleteOrEditOrganisationExpensesRemark,
+  canCreateOrganisationExpenses,
   canEditOrganisationExpenses,
+  canDeleteOrEditOrganisationIncomeRemark,
+  canEditOrganisationIncome,
+  canCreateOrganisationIncome,
+  canDeleteOrEditOrganisationInvoiceRemark,
+  canEditOrganisationInvoice,
+  canCreateOrganisationInvoice,
 };
