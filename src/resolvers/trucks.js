@@ -139,7 +139,7 @@ const getTrucks = async (req, res) => {
     const trucks = await TruckModel.find({
       organisationId,
       disabled: disabled === "true" ? true : false,
-    });
+    }, { remarks: 0, logs: 0, timeline: 0 });
     if (!trucks) return res.status(400).send({ error: "no truck found" });
     return res.status(200).send({ data: trucks });
   } catch (error) {
@@ -507,7 +507,7 @@ const activateTruck = async (req, res) => {
       { _id: truckId },
       {
         active: activate || false,
-        status: activate ? "available" : "inactive",
+        status: activate ? "Available" : "Inactive",
       },
       { new: true }
     );
@@ -526,7 +526,7 @@ const getAvailableTrucks = async (req, res) => {
       active: true,
       disabled: false,
       organisationId,
-      status: "available",
+      status: "Available",
     });
 
     return res.status(200).send({ data: trucks });

@@ -3,6 +3,7 @@ const CustomerModel = require("../models/customer");
 const TripModel = require("../models/trip");
 const VendorAgentModel = require("../models/vendorAgent");
 const OrganisationUserModel = require("../models/organisationUsers");
+const ExpensesModel = require("../models/expenses");
 
 const canDeleteOrEditOrganisationPartnerRemark = async (param) => {
   const { partnerId, remarkId, userId } = param;
@@ -82,10 +83,42 @@ if (user) {
   return canPerformAction;
 };
 
+const canDeleteOrEditOrganisationExpensesRemark = async (param) => {
+  const { expensesId, remarkId, userId } = param;
+  let canPerformAction = false;
+  const expenses = await TripModel.findOne({
+    _id: expensesId,
+  });
+  if (expenses.remarks?.length > 0) {
+    const remark = expenses.remarks.find(
+      (remark) => remark._id.toString() === remarkId
+    );
+    if (remark) {
+      canPerformAction = remark.userId.toString() === userId;
+    }
+  }
+  return canPerformAction;
+};
+const canEditOrganisationExpenses = async (param) => {
+  const { expensesId,  userId } = param;
+  let canPerformAction = false;
+  const expenses = await ExpensesModel.findOne({
+    _id: expensesId,
+  });
+const organisationId = expenses?.organisationId;
+const user = await OrganisationUserModel.findOne({ _id: userId, organisationId });
+if (user) {
+  canPerformAction = true;
+}
+  return canPerformAction;
+};
+
 module.exports = {
   canDeleteOrEditOrganisationPartnerRemark,
   canDeleteOrEditOrganisationCustomerRemark,
   canDeleteOrEditOrganisationTripRemark,
   canDeleteOrEditOrganisationVendorAgentRemark,
-  canEditOrganisationTrip
+  canEditOrganisationTrip,
+  canDeleteOrEditOrganisationExpensesRemark,
+  canEditOrganisationExpenses,
 };

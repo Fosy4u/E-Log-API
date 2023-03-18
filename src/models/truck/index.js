@@ -41,7 +41,7 @@ const TruckSchema = new mongoose.Schema({
   regNo: { type: String, required: true, unique: true },
   active: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
-  status: { type: String, default: "available" },
+  status: { type: String, default: "Inactive" },
   chasisNo: { type: String, required: true, unique: true },
   manufacturer: { type: String, required: true },
   ownership: { type: String, required: true },

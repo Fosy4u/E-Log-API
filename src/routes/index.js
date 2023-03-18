@@ -4,7 +4,7 @@ const homeResolver = require("../resolvers/home");
 const organisationUsersResolver = require("../resolvers/organisationUsers");
 const organisationProfileResolver = require("../resolvers/organisationProfile");
 const OrganisationBranchResolver = require("../resolvers/organisationBranch");
-const uploadImage = require("../middleware/uploadImage");
+const { upload, uploadMultiple } = require("../middleware/uploadImage");
 const authMiddleware = require("../middleware/firebaseUserAuth");
 const organisationContactResolver = require("../resolvers/organisationContact");
 const truckResolver = require("../resolvers/trucks");
@@ -13,6 +13,7 @@ const organisationpartnerResolver = require("../resolvers/organisationPartner");
 const customerResolver = require("../resolvers/customer");
 const tripResolver = require("../resolvers/trip");
 const vendorAgentResolver = require("../resolvers/vendorAgent");
+const expensesResolver = require("../resolvers/expenses");
 
 let routes = (app) => {
   router.get("/", homeResolver.getHome);
@@ -28,7 +29,7 @@ let routes = (app) => {
   );
   router.put(
     "/organisation/editOrganisation",
-    uploadImage,
+    upload,
     organisationProfileResolver.editOrganisationProfile
   );
   router.delete(
@@ -78,18 +79,17 @@ let routes = (app) => {
 
   //Trucks
 
-  router.post("/truck/create", uploadImage, truckResolver.createTruck);
+  router.post("/truck/create", upload, truckResolver.createTruck);
   router.get("/trucks", authMiddleware, truckResolver.getTrucks);
   router.get("/truck", authMiddleware, truckResolver.getTruck);
   router.get("/truck/param", authMiddleware, truckResolver.getTruckByParam);
   router.get("/trucks/partner", authMiddleware, truckResolver.getPartnerTrucks);
-  router.get("/trucks/available", authMiddleware, truckResolver.getAvailableTrucks);
-  router.put(
-    "/truck/edit",
+  router.get(
+    "/trucks/available",
     authMiddleware,
-    uploadImage,
-    truckResolver.editTruck
+    truckResolver.getAvailableTrucks
   );
+  router.put("/truck/edit", authMiddleware, upload, truckResolver.editTruck);
   router.put("/truck/delete", authMiddleware, truckResolver.deleteTruck);
   router.put("/truck/restore", authMiddleware, truckResolver.restoreTruck);
   router.put(
@@ -111,28 +111,23 @@ let routes = (app) => {
   router.put(
     "/truck/uploadTruckDoc",
     authMiddleware,
-    uploadImage,
+    upload,
     truckResolver.uploadTruckDoc
   );
 
   //Driver
-  router.post("/driver/create", uploadImage, driverResolver.createDriver);
+  router.post("/driver/create", upload, driverResolver.createDriver);
   router.get("/drivers", authMiddleware, driverResolver.getDrivers);
   router.get("/driver", authMiddleware, driverResolver.getDriver);
   router.get("/driver/param", authMiddleware, driverResolver.getDriverByParam);
-  router.put(
-    "/driver/edit",
-    authMiddleware,
-    uploadImage,
-    driverResolver.editDriver
-  );
+  router.put("/driver/edit", authMiddleware, upload, driverResolver.editDriver);
   router.put("/driver/activate", authMiddleware, driverResolver.activateDriver);
   router.put("/driver/delete", authMiddleware, driverResolver.deleteDriver);
   router.put("/driver/restore", authMiddleware, driverResolver.restoreDriver);
   router.put(
     "/driver/uploadDriverDoc",
     authMiddleware,
-    uploadImage,
+    upload,
     driverResolver.uploadDriverDoc
   );
 
@@ -140,7 +135,7 @@ let routes = (app) => {
   router.post(
     "/organisationPartner/create",
     authMiddleware,
-    uploadImage,
+    upload,
     organisationpartnerResolver.createOrganisationPartner
   );
   router.get(
@@ -171,7 +166,7 @@ let routes = (app) => {
   router.put(
     "/organisationPartner/edit",
     authMiddleware,
-    uploadImage,
+    upload,
     organisationpartnerResolver.editOrganisationPartner
   );
   router.put(
@@ -316,7 +311,7 @@ let routes = (app) => {
   router.put(
     "/trip/waybil/upload",
     authMiddleware,
-    uploadImage,
+    upload,
     tripResolver.uploadWaybill
   );
 
@@ -326,6 +321,30 @@ let routes = (app) => {
     tripResolver.deleteTripRemark
   );
   router.put("/trip/editRemark", authMiddleware, tripResolver.editTripRemark);
+
+  //Expenses
+  const handleMoreFieldsUploads = uploadMultiple.fields([
+    { name: "documents", maxCount: 5 },
+    { name: "pictures", maxCount: 5 },
+  ]);
+  router.post(
+    "/expenses/create",
+    authMiddleware,
+    handleMoreFieldsUploads,
+    expensesResolver.createExpenses
+  );
+  router.get( "/expenses", authMiddleware, expensesResolver.getExpenses);
+  router.get( "/oneExpenses", authMiddleware, expensesResolver.getOneExpenses);
+  router.get( "/expenses/remarks", authMiddleware, expensesResolver.getExpensesRemarks);
+  router.get( "/expenses/logs", authMiddleware, expensesResolver.getExpensesLogs);
+  router.put( "/expenses/edit", authMiddleware, expensesResolver.updateExpenses);
+  router.put( "/expenses/delete", authMiddleware, expensesResolver.deleteExpenses);
+  router.put( "/expenses/restore", authMiddleware, expensesResolver.restoreExpenses);
+  router.put( "/expenses/addRemark", authMiddleware, expensesResolver.addExpensesRemark);
+  router.put( "/expenses/deleteRemark", authMiddleware, expensesResolver.deleteExpensesRemark);
+  router.put( "/expenses/editRemark", authMiddleware, expensesResolver.editExpensesRemark);
+  router.put( "/expenses/uploads", authMiddleware, expensesResolver.uploadImages);
+  router.put( "/expenses/deleteUploads", authMiddleware, expensesResolver.deleteExpensesImage);
 
   //OrganisationContact
   router.post(

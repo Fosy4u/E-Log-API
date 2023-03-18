@@ -5,6 +5,7 @@ const VendorAgentModel = require("../models/vendorAgent");
 const CustomerModel = require("../models/customer");
 const OrganisationPartnerModel = require("../models/organisationPartner");
 const OrganisationProfileModel = require("../models/organisationProfile");
+const { deleteLocalFile } = require("../helpers/utils");
 const {
   canDeleteOrEditOrganisationTripRemark,
   canEditOrganisationTrip,
@@ -33,13 +34,18 @@ const addImage = async (req, filename) => {
       path.resolve(req.file.destination, "resized", filename),
       {
         public: true,
-        destination: `/partner/${filename}`,
+        destination: `/trip/${filename}`,
         metadata: {
           firebaseStorageDownloadTokens: uuidv4(),
         },
       }
     );
     url = { link: storage[0].metadata.mediaLink, name: filename };
+    const deleteSourceFile = await deleteLocalFile(source);
+    const deleteResizedFile = await deleteLocalFile(
+      path.resolve(req.file.destination, "resized", filename)
+    );
+
     return url;
   }
   return url;

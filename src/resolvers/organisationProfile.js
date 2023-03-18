@@ -36,8 +36,6 @@ const addImage = async (req, filename) => {
 
 const getOrganisationProfile = async (req, res) => {
   try {
-    console.log("quer", req.query);
-    console.log("req.query.id", req.query);
     const params = { ...req.query };
 
     const organisation = await OrganisationProfileModel.findOne(params);
