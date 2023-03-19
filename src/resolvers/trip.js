@@ -191,7 +191,6 @@ const unInvoicedTrips = async (req, res) => {
       {
         organisationId,
         disabled: disabled || false,
-        status_lower: "delivered",
       },
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();

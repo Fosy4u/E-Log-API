@@ -115,8 +115,8 @@ const createIncome = async (req, res) => {
   }
 };
 
-const attachVendor = async (income) => {
-  const vendorIds = income.map((income) => {
+const attachProperties = async (incomes) => {
+  const vendorIds = incomes.map((income) => {
     if (income.vendorId && income.vendorId !== "") {
       return income.vendorId;
     } else {
@@ -127,26 +127,22 @@ const attachVendor = async (income) => {
     { _id: { $in: vendorIds } },
     { companyName: 1, firstName: 1, lastName: 1 }
   ).lean();
-  const tripIds = income.map((income) => {
-    if (income.tripId && income.tripId !== "") {
-      return income.tripId;
-    } else {
-      return null;
-    }
-  });
+  console.log("incomes are", incomes);
+  const tripIds = incomes.map((income) => income.requestIds)?.flat();
+  console.log("tripIds are", tripIds);
   const trips = await TripModel.find(
     { requestId: { $in: tripIds } },
-    { status: 1, requestId: 1 }
+    { status: 1, requestId: 1, waybillNumber: 1 }
   ).lean();
-  const incomeWithVehicleAndTrip = income.map((income) => {
+  console.log("trips are", trips);
+  const incomeWithVehicleAndTrip = incomes.map((income) => {
     const vendor = vendors.find((vendor) => vendor._id == income.vendorId);
     const vendorName = getName(vendor);
-    console.log(vendorName);
-    const trip = trips.find((trip) => trip.requestId == income.tripId);
+
     return {
       ...income,
       vendorName,
-      trip: trip,
+      trips: trips,
     };
   });
   return incomeWithVehicleAndTrip;
@@ -169,11 +165,11 @@ const getIncomes = async (req, res) => {
         .status(401)
         .json({ error: "Internal error in getting income" });
 
-    const incomeWithVehicle = await attachVendor(income, organisationId);
+    const propertiesAttached = await attachProperties(income, organisationId);
 
     return res.status(200).send({
       message: "Income fetched successfully",
-      data: incomeWithVehicle.sort(function (a, b) {
+      data: propertiesAttached.sort(function (a, b) {
         return new Date(b?.date) - new Date(a?.date);
       }),
     });
@@ -193,8 +189,9 @@ const getIncome = async (req, res) => {
       return res.status(400).send({ error: "organisationId is required" });
     const income = await IncomeModel.findOne({ _id, organisationId }).lean();
     if (!income) return res.status(400).send({ error: "income not found" });
-    const incomeWithVehicle = await attachVendor([income], organisationId);
-    return res.status(200).send({ data: incomeWithVehicle[0] });
+    const propertiesAttached = await attachProperties([income], organisationId);
+
+    return res.status(200).send({ data: propertiesAttached[0] });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -211,11 +208,9 @@ const updateIncome = async (req, res) => {
     const param = { incomeId: _id, userId };
     const canPerformAction = await canEditOrganisationIncome(param);
     if (!canPerformAction)
-      return res
-        .status(400)
-        .send({
-          error: "you dont have the permission to carry out this request",
-        });
+      return res.status(400).send({
+        error: "you dont have the permission to carry out this request",
+      });
     const oldData = IncomeModel.findById(_id, { lean: true });
     const newData = req.body;
     const difference = [];
@@ -470,7 +465,7 @@ const addIncomeRemark = async (req, res) => {
       userId,
       action: "remark",
       reason: "added remark",
-      details: `added remark on income - ${income.requestId}`,
+      details: `added remark on income `,
     };
     const updateIncome = await IncomeModel.findByIdAndUpdate(
       { _id },

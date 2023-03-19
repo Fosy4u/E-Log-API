@@ -26,7 +26,6 @@ const TripSchema = new mongoose.Schema({
   actualFuelCost: { type: Number },
   actualFuelLitres: { type: Number },
   status: { type: String, required: true, default: "pending" },
-
   pickupAddress: { type: String, required: true },
   dropOffAddress: { type: String, required: true },
   pickupDate: { type: String, required: true },

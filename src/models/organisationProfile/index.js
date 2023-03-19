@@ -6,6 +6,7 @@ const BankDetailSchema = new mongoose.Schema({
   bankName: { type: String, required: false },
   accountName: { type: String, required: false },
   accountNumber: { type: String, required: false },
+  default: { type: Boolean, default: false },
 });
 const SocialSchema = new mongoose.Schema({
   twitter: String,
@@ -63,7 +64,6 @@ const OrganisationProfileSchema = new mongoose.Schema({
   regionalSettings: RegionalSettings,
   active: { type: Boolean, required: true, default: true },
 
-
   deletionReasons: {
     type: Array,
     default: [
@@ -74,7 +74,7 @@ const OrganisationProfileSchema = new mongoose.Schema({
       "stock re-evaluation",
     ],
   },
-  
+
   bankDetails: { type: [BankDetailSchema] },
 });
 
