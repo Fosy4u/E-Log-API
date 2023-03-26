@@ -303,8 +303,9 @@ let routes = (app) => {
     tripResolver.createTrip
   );
   router.get("/trips", authMiddleware, tripResolver.getTrips);
-  router.get("/trips/univoiced", authMiddleware, tripResolver.unInvoicedTrips);
+  router.get("/trips/univoiced/unpaid", authMiddleware, tripResolver.unInvoicedUnpaidTrips);
   router.get("/trip", authMiddleware, tripResolver.getTrip);
+  router.get("/trip/requestId", authMiddleware, tripResolver.getTripByRequestId);
   router.get("/trip/remarks", authMiddleware, tripResolver.getTripRemarks);
   router.get("/trip/logs", authMiddleware, tripResolver.getTripLogs);
   router.put("/trip/edit", authMiddleware, tripResolver.updateTrip);
@@ -427,9 +428,6 @@ let routes = (app) => {
     incomeResolver.editIncomeRemark
   );
 
-
-
-
   //Invoice
 
   router.post(
@@ -439,7 +437,13 @@ let routes = (app) => {
     invoiceResolver.createInvoice
   );
   router.get("/invoices", authMiddleware, invoiceResolver.getInvoices);
+  router.get(
+    "/invoices/unpaid",
+    authMiddleware,
+    invoiceResolver.getUnpaidInvoices
+  );
   router.get("/invoice", authMiddleware, invoiceResolver.getInvoice);
+  router.get("/invoice/invoiceId", authMiddleware, invoiceResolver.getInvoiceByInvoiceId);
   router.get(
     "/invoice/remarks",
     authMiddleware,
@@ -469,13 +473,6 @@ let routes = (app) => {
     authMiddleware,
     invoiceResolver.editInvoiceRemark
   );
-
-
-
-
-
-
-
 
   //Template
   router.get("/template", templateResolver.getTemplate);

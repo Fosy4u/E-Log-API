@@ -8,6 +8,7 @@ const {
   canEditOrganisationIncome,
   canCreateOrganisationIncome,
 } = require("../helpers/actionPermission");
+const { numberWithCommas, getPaidAndAmountDue } = require("../helpers/utils");
 
 function getRandomInt(min, max) {
   return min + Math.floor(Math.random() * (max - min + 1));
@@ -44,8 +45,29 @@ const getName = (contact) => {
   return `${contact?.firstName} ${contact?.lastName}`;
 };
 
+const updateTripLogs = async (requestId, log) => {
+  const upDateTrip = await TripModel.findOneAndUpdate(
+    { requestId: requestId },
+    { $push: { logs: log } },
+    { new: true }
+  );
+  return upDateTrip?._id ? true : false;
+};
+
+const validateAmount = async (request) => {
+  const { amount, requestId } = request;
+  const trip = await TripModel.findOne({ requestId: requestId });
+  const originalAmount = trip?.amount;
+  const { paid, amountDue } = await Promise.resolve(getPaidAndAmountDue(trip));
+  if (amountDue === 0) return false;
+  if (amountDue < amount) return false;
+  if (paid + amount > originalAmount) return false;
+  return true;
+};
+
 const createIncome = async (req, res) => {
-  const { organisationId, amount, date, userId, remark } = req.body;
+  const { organisationId, amount, date, userId, remark, requestIds, vendorId } =
+    req.body;
 
   try {
     if (!organisationId) {
@@ -56,8 +78,12 @@ const createIncome = async (req, res) => {
 
     if (!amount)
       return res.status(400).json({ error: "Please provide amount" });
+    if (!vendorId)
+      return res.status(400).json({ error: "Please provide vendor id" });
 
     if (!date) return res.status(400).json({ error: "Please provide date" });
+    if (!requestIds || requestIds.length === 0)
+      return res.status(400).json({ error: "Please provide requestIds" });
 
     if (!userId)
       return res
@@ -69,8 +95,27 @@ const createIncome = async (req, res) => {
       return res.status(400).send({
         error: "you dont have the permission to carry out this request",
       });
+    let invalids = 0;
+    const validate = await Promise.all(
+      requestIds.map(async (request) => {
+        const valid = await validateAmount(request);
+        if (!valid) {
+          invalids++;
+        }
+      })
+    );
+    if (invalids > 0) {
+      return res.status(400).send({
+        error:
+          "Failed to validate amount: either invalid trip or amount is in conflict with trip amount due",
+      });
+    }
 
     const incomeId = await generateUniqueCode(organisationId);
+    if (!incomeId)
+      return res
+        .status(400)
+        .send({ error: "Internal error in generating incomeId" });
 
     const log = {
       date: new Date(),
@@ -93,6 +138,7 @@ const createIncome = async (req, res) => {
     params = {
       ...req.body,
       incomeId,
+
       logs: [log],
       remarks,
     };
@@ -103,6 +149,26 @@ const createIncome = async (req, res) => {
     const saveIncome = await newIncome.save();
     if (!saveIncome)
       return res.status(401).json({ error: "Internal in saving income" });
+
+    await Promise.all(
+      requestIds.map(async (request) => {
+        const { amount, requestId } = request;
+        const log = {
+          date: new Date(),
+          userId: userId,
+          action: "paid",
+          details: `${numberWithCommas(
+            amount
+          )} paid from incomeId - ${incomeId}`,
+          reason: `Income added to trip`,
+        };
+        const updateTrip = await updateTripLogs(requestId, log);
+        if (!updateTrip)
+          return res
+            .status(401)
+            .json({ error: "Income recorded but failed to update trip log" });
+      })
+    );
 
     return res
       .status(200)
@@ -127,22 +193,36 @@ const attachProperties = async (incomes) => {
     { _id: { $in: vendorIds } },
     { companyName: 1, firstName: 1, lastName: 1 }
   ).lean();
-  console.log("incomes are", incomes);
-  const tripIds = incomes.map((income) => income.requestIds)?.flat();
-  console.log("tripIds are", tripIds);
+
+  const tripobjs = incomes.map((income) => income.requestIds)?.flat();
+  const tripIds = tripobjs.map((trip) => trip.requestId);
+
   const trips = await TripModel.find(
     { requestId: { $in: tripIds } },
     { status: 1, requestId: 1, waybillNumber: 1 }
   ).lean();
-  console.log("trips are", trips);
+
   const incomeWithVehicleAndTrip = incomes.map((income) => {
     const vendor = vendors.find((vendor) => vendor._id == income.vendorId);
     const vendorName = getName(vendor);
+    const { requestIds } = income;
+    let tripCollection = [];
+    if (requestIds && requestIds.length > 0) {
+      requestIds.map((request) => {
+        const trip = trips.find((trip) => trip.requestId == request.requestId);
+        if (trip) {
+          tripCollection.push({
+            ...trip,
+            amountPaid: request.amount,
+          });
+        }
+      });
+    }
 
     return {
       ...income,
       vendorName,
-      trips: trips,
+      trips: tripCollection,
     };
   });
   return incomeWithVehicleAndTrip;
@@ -198,7 +278,8 @@ const getIncome = async (req, res) => {
 };
 
 const updateIncome = async (req, res) => {
-  const { _id, userId, organisationId } = req.body;
+  const { _id, userId, organisationId, requestIds } = req.body;
+  console.log("requestIds", requestIds);
   try {
     if (!_id) return res.status(400).json({ error: "Please provide _id" });
     if (!userId)
@@ -211,7 +292,8 @@ const updateIncome = async (req, res) => {
       return res.status(400).send({
         error: "you dont have the permission to carry out this request",
       });
-    const oldData = IncomeModel.findById(_id, { lean: true });
+    const oldData = await IncomeModel.findById(_id).lean();
+    console.log("oldData", oldData);
     const newData = req.body;
     const difference = [];
 
@@ -228,7 +310,8 @@ const updateIncome = async (req, res) => {
         key !== "remarks" &&
         key !== "userId" &&
         key !== "vendorId" &&
-        key !== "vehicleId"
+        key !== "vehicleId" &&
+        key !== "requestIds"
       ) {
         difference.push({
           field: key,
@@ -253,22 +336,26 @@ const updateIncome = async (req, res) => {
       });
     }
 
-    if (req.body?.vehicleId && req.body?.vehicleId !== oldData?.vehicleId) {
-      const oldVehicle = await TruckModel.findOne({
-        _id: oldData?.vehicleId,
-        organisationId,
-      });
-      const newVehicle = await TruckModel.findOne({
-        _id: req.body?.vehicleId,
-        organisationId,
-      });
-      difference.push({
-        field: "vehicle",
-        old: oldVehicle?.regNo || "not provided",
-        new: newVehicle?.regNo,
-      });
-    }
+    const oldRequestIds = oldData?.requestIds;
+    const oldRequestIdsMap = oldRequestIds?.map(
+      (request) => request?.requestId
+    );
 
+    const requestIdsMap = requestIds?.map((request) => request?.requestId);
+    if (requestIds && requestIds.length > 0) {
+      //check if equal content
+      const isEqual = requestIdsMap.every((requestId) =>
+        oldRequestIdsMap.includes(requestId)
+      );
+
+      if (!isEqual) {
+        difference.push({
+          field: "trips",
+          old: oldRequestIdsMap || "not provided",
+          new: requestIdsMap || "not provided",
+        });
+      }
+    }
     const log = {
       date: new Date(),
       userId: userId,
@@ -278,15 +365,11 @@ const updateIncome = async (req, res) => {
       difference,
     };
 
-    const params = {
-      ...req.body,
-      logs: [log],
-    };
-
     const updateIncome = await IncomeModel.findByIdAndUpdate(
       _id,
       {
-        ...params,
+        ...req.body,
+        logs: [...oldData.logs, log],
       },
       { new: true }
     );
@@ -295,6 +378,20 @@ const updateIncome = async (req, res) => {
       return res
         .status(401)
         .json({ error: "Internal error in updating income" });
+
+    await Promise.all(
+      updateIncome.requestIds.map(async (request) => {
+        const requestLog = {
+          date: new Date(),
+          userId: userId,
+          action: "edit payment",
+          details: `Income - updated`,
+          reason: `updated income`,
+          difference,
+        };
+        const updateTrip = await updateTripLogs(request.requestId, requestLog);
+      })
+    );
 
     return res
       .status(200)

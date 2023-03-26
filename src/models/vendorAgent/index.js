@@ -30,9 +30,6 @@ const VendorAgentSchema = new mongoose.Schema({
   localGovernmentArea: { type: String, required: false },
   social: SocialSchema,
   classification: { type: String, required: false },
-
-  
-  
 });
 
 VendorAgentSchema.plugin(timestamp);

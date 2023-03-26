@@ -30,7 +30,7 @@ const TripSchema = new mongoose.Schema({
   dropOffAddress: { type: String, required: true },
   pickupDate: { type: String, required: true },
   dropOffDate: { type: String },
-  price: { type: Number, required: true },
+  amount: { type: Number, required: true },
   productName: { type: String, required: true },
   remarks: {
     type: [{ userId: String, remark: String, date: String }],

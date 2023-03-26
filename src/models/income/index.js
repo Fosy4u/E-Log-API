@@ -8,7 +8,10 @@ const IncomeSchema = new mongoose.Schema({
   invoiceId: { type: String },
   disabled: { type: Boolean, default: false },
   date: { type: String },
-  requestIds: { type: [String] },
+  requestIds: { type: [{
+    requestId: String,
+    amount: Number,
+  }] },
   vendorId: { type: String },
   amount: { type: Number },
   remarks: {

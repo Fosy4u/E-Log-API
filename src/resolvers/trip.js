@@ -6,7 +6,12 @@ const CustomerModel = require("../models/customer");
 const OrganisationPartnerModel = require("../models/organisationPartner");
 const OrganisationProfileModel = require("../models/organisationProfile");
 const InvoiceModel = require("../models/invoice");
-const { deleteLocalFile } = require("../helpers/utils");
+const IncomeModel = require("../models/income");
+const {
+  deleteLocalFile,
+  getPaidAndAmountDue,
+  getPaidAndAmountDueExcludeInvoicePayment,
+} = require("../helpers/utils");
 const {
   canDeleteOrEditOrganisationTripRemark,
   canEditOrganisationTrip,
@@ -72,21 +77,77 @@ const deleteImageFromFirebase = async (name) => {
 
 const getUninvoicedWaybills = async (trips) => {
   const tripIds = trips.map((trip) => trip.requestId);
+
   const invoiced = await InvoiceModel.find({
-    trips: { $in: tripIds },
+    "requestIds.requestId": { $in: tripIds },
   }).lean();
-  const invoicedTripIds = invoiced.map((invoice) => invoice.trips);
-  const invoicedTripIdsFlat = invoicedTripIds.flat();
-  const unInvoicedTrips = trips.filter((trip) => {
-    return !invoicedTripIdsFlat.includes(trip.requestId);
-  });
-  return unInvoicedTrips;
-  // const unInvoicedTripIds = unInvoiced.map((invoice) => invoice.trips);
-  // const unInvoicedTripIdsFlat = unInvoicedTripIds.flat();
+  const requestIdsMap = invoiced.reduce((acc, invoice) => {
+    invoice.requestIds.forEach((request) => {
+      acc.push(request.requestId);
+    });
+    return acc;
+  }, []);
+
+  // const unInvoicedTrips = trips
   // const unInvoicedTrips = trips.filter((trip) => {
-  //   return unInvoicedTripIdsFlat.includes(trip.tripId);
+  //   return !requestIdsMap.includes(trip.requestId);
   // });
-  // return unInvoicedTrips;
+  const vendorIds = trips.map((trip) => (trip.vendorId ? trip.vendorId : null));
+
+  const vendors = await VendorAgentModel.find({
+    _id: { $in: vendorIds },
+  }).lean();
+
+  const vendorMap = vendors.reduce((acc, vendor) => {
+    acc[vendor._id] = vendor;
+    return acc;
+  }, {});
+  const customerIds = trips.map((trip) =>
+    trip.customerId ? trip.customerId : null
+  );
+  const customers = await CustomerModel.find({
+    _id: { $in: customerIds },
+  }).lean();
+  const customerMap = customers.reduce((acc, customer) => {
+    acc[customer._id] = customer;
+    return acc;
+  }, {});
+  const result = [];
+  const unInvoicedTripsWithVendor = trips.map(async (trip) => {
+    const paidAndAmountDueExcludeInvoicePayment =
+      await getPaidAndAmountDueExcludeInvoicePayment(trip);
+    const invoicedTrips = invoiced.filter((invoice) =>
+      invoice.requestIds.some((request) => request.requestId === trip.requestId)
+    );
+    const sumInvoicedTripAmount = invoicedTrips.reduce((acc, invoice) => {
+      const request = invoice.requestIds.find(
+        (request) => request.requestId === trip.requestId
+      );
+      return acc + request.amount;
+    }, 0);
+
+    if (
+      paidAndAmountDueExcludeInvoicePayment?.amountDue > sumInvoicedTripAmount
+    ) {
+      const amountDue =
+        trip.amount -
+        sumInvoicedTripAmount -
+        paidAndAmountDueExcludeInvoicePayment?.amountDue;
+
+      result.push({
+        ...trip,
+        amountDue,
+        vendor: vendorMap[trip.vendorId],
+        requester:
+          getName(vendorMap[trip.vendorId]) ||
+          `Direct Customer: ${getName(customerMap[trip.customerId])}`,
+
+        customer: customerMap[trip.customerId],
+      });
+    }
+  });
+  await Promise.all(unInvoicedTripsWithVendor);
+  return result;
 };
 
 const getPartnerTitle = (partner) => {
@@ -103,7 +164,6 @@ const attachPartnerToVehicle = async (vehicles, organisationId) => {
     },
     { name: 1 }
   );
-  console.log("org", organisation);
 
   const partnerIds = vehicles.map((vehicle) => vehicle.assignedPartnerId);
   const partners = await OrganisationPartnerModel.find({
@@ -123,7 +183,8 @@ const attachPartnerToVehicle = async (vehicles, organisationId) => {
     };
   });
 };
-const attachVehicle = async (trips, organisationId) => {
+
+const attachTripProperties = async (trips, organisationId) => {
   const vehicleIds = trips.map((trip) => trip.vehicleId);
   const vehicles = await TruckModel.find(
     {
@@ -136,12 +197,23 @@ const attachVehicle = async (trips, organisationId) => {
   attachPartners.forEach((vehicle) => {
     vehicleMap[vehicle._id] = vehicle;
   });
-  return trips.map((trip) => {
+
+  const properties = trips.map(async (trip) => {
+    const paidAndAmountDue = await getPaidAndAmountDue(trip);
+    const vendor = await VendorAgentModel.findById(trip.vendorId, {
+      companyName: 1,
+      firstName: 1,
+      lastName: 1,
+    }).lean();
     return {
       ...trip,
       vehicle: vehicleMap[trip.vehicleId] || null,
+      paid: paidAndAmountDue.paid,
+      amountDue: paidAndAmountDue.amountDue,
+      requester: getName(vendor),
     };
   });
+  return Promise.all(properties);
 };
 
 const getTrip = async (req, res) => {
@@ -152,8 +224,31 @@ const getTrip = async (req, res) => {
       return res.status(400).send({ error: "organisationId is required" });
     const trip = await TripModel.findOne({ _id, organisationId }).lean();
     if (!trip) return res.status(400).send({ error: "trip not found" });
-    const tripsWithVehicle = await attachVehicle([trip], organisationId);
-    return res.status(200).send({ data: tripsWithVehicle[0] });
+    const tripsWithProperties = await attachTripProperties(
+      [trip],
+      organisationId
+    );
+
+    return res.status(200).send({ data: tripsWithProperties[0] });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+const getTripByRequestId = async (req, res) => {
+  try {
+    const { requestId, organisationId } = req.query;
+    if (!requestId)
+      return res.status(400).send({ error: "requestId is required" });
+    if (!organisationId)
+      return res.status(400).send({ error: "organisationId is required" });
+    const trip = await TripModel.findOne({ requestId, organisationId }).lean();
+    if (!trip) return res.status(400).send({ error: "trip not found" });
+    const tripsWithProperties = await attachTripProperties(
+      [trip],
+      organisationId
+    );
+
+    return res.status(200).send({ data: tripsWithProperties[0] });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -171,9 +266,13 @@ const getTrips = async (req, res) => {
       },
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
-    const tripsWithVehicle = await attachVehicle(trips, organisationId);
+    const tripsWithProperties = await attachTripProperties(
+      trips,
+      organisationId
+    );
+
     return res.status(200).send({
-      data: tripsWithVehicle.sort(function (a, b) {
+      data: tripsWithProperties.sort(function (a, b) {
         return b.createdAt - a.createdAt;
       }),
     });
@@ -182,7 +281,7 @@ const getTrips = async (req, res) => {
   }
 };
 
-const unInvoicedTrips = async (req, res) => {
+const unInvoicedUnpaidTrips = async (req, res) => {
   try {
     const { organisationId, disabled } = req.query;
     if (!organisationId)
@@ -195,9 +294,16 @@ const unInvoicedTrips = async (req, res) => {
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
 
-    const filterUnInvoicedTrips = await getUninvoicedWaybills(trips);
+    const filterUnInvoicedTrips = await Promise.resolve(
+      getUninvoicedWaybills(trips)
+    );
+
+    const filterUnpaidTrips = filterUnInvoicedTrips.filter(
+      (trip) => trip.amountDue > 0
+    );
+
     return res.status(200).send({
-      data: filterUnInvoicedTrips.sort(function (a, b) {
+      data: filterUnpaidTrips.sort(function (a, b) {
         return b.createdAt - a.createdAt;
       }),
     });
@@ -247,7 +353,7 @@ const createTrip = async (req, res) => {
     pickupDate,
     dropOffAddress,
     estimatedDropOffDate,
-    price,
+    amount,
     vendorId,
     isVendorRequested,
   } = req.body;
@@ -268,7 +374,7 @@ const createTrip = async (req, res) => {
     if (!dropOffAddress)
       return res.status(400).send({ error: "dropOffAddress is required" });
 
-    if (!price) return res.status(400).send({ error: "price is required" });
+    if (!amount) return res.status(400).send({ error: "amount is required" });
     if (!quantity)
       return res.status(400).send({ error: "quantity is required" });
     if (isVendorRequested && !vendorId)
@@ -347,8 +453,9 @@ const createTrip = async (req, res) => {
 
 const getName = (contact) => {
   if (contact?.companyName) return contact?.companyName;
-
-  return `${contact?.firstName} ${contact?.lastName}`;
+  if (contact?.firstName && contact?.lastName)
+    return `${contact?.firstName} ${contact?.lastName}`;
+  return null;
 };
 
 const updateTrip = async (req, res) => {
@@ -1320,7 +1427,7 @@ module.exports = {
   createTrip,
   getTrip,
   getTrips,
-  unInvoicedTrips,
+  unInvoicedUnpaidTrips,
   getTripLogs,
   addTripRemark,
   deleteTripRemark,
@@ -1331,4 +1438,5 @@ module.exports = {
   getTripRemarks,
   uploadWaybill,
   tripAction,
+  getTripByRequestId,
 };
