@@ -21,7 +21,7 @@ const getPaidAndAmountDue = async (trip) => {
   if (!requestId) return { paid, amountDue };
 
   const incomes = await IncomeModel.find(
-    { "requestIds.requestId": requestId },
+    { disabled: false, "requestIds.requestId": requestId },
     {
       requestIds: 1,
     }
@@ -47,7 +47,12 @@ const getPaidAndAmountDueExcludeInvoicePayment = async (trip) => {
   if (!requestId) return { paid, amountDue };
 
   const incomes = await IncomeModel.find(
-    { "requestIds.requestId": requestId, invoiceId: { $exists: false } },
+    {
+      disabled: false,
+      "requestIds.requestId": requestId,
+      invoiceId: { $exists: false },
+    },
+
     {
       requestIds: 1,
     }
@@ -70,5 +75,5 @@ module.exports = {
   deleteLocalFile,
   numberWithCommas,
   getPaidAndAmountDue,
-  getPaidAndAmountDueExcludeInvoicePayment
+  getPaidAndAmountDueExcludeInvoicePayment,
 };

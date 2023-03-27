@@ -75,11 +75,11 @@ const deleteImageFromFirebase = async (name) => {
   }
 };
 
-const getUninvoicedWaybills = async (trips) => {
+const addProps = async (trips, editInvoice) => {
   const tripIds = trips.map((trip) => trip.requestId);
-
   const invoiced = await InvoiceModel.find({
     "requestIds.requestId": { $in: tripIds },
+    disabled: false,
   }).lean();
   const requestIdsMap = invoiced.reduce((acc, invoice) => {
     invoice.requestIds.forEach((request) => {
@@ -88,10 +88,6 @@ const getUninvoicedWaybills = async (trips) => {
     return acc;
   }, []);
 
-  // const unInvoicedTrips = trips
-  // const unInvoicedTrips = trips.filter((trip) => {
-  //   return !requestIdsMap.includes(trip.requestId);
-  // });
   const vendorIds = trips.map((trip) => (trip.vendorId ? trip.vendorId : null));
 
   const vendors = await VendorAgentModel.find({
@@ -114,36 +110,57 @@ const getUninvoicedWaybills = async (trips) => {
   }, {});
   const result = [];
   const unInvoicedTripsWithVendor = trips.map(async (trip) => {
-    const paidAndAmountDueExcludeInvoicePayment =
-      await getPaidAndAmountDueExcludeInvoicePayment(trip);
     const invoicedTrips = invoiced.filter((invoice) =>
       invoice.requestIds.some((request) => request.requestId === trip.requestId)
     );
-    const sumInvoicedTripAmount = invoicedTrips.reduce((acc, invoice) => {
-      const request = invoice.requestIds.find(
-        (request) => request.requestId === trip.requestId
-      );
-      return acc + request.amount;
-    }, 0);
+    if (editInvoice === "true") {
+      const paidAndAmountDueExcludeInvoicePayment =
+        await getPaidAndAmountDueExcludeInvoicePayment(trip);
 
-    if (
-      paidAndAmountDueExcludeInvoicePayment?.amountDue > sumInvoicedTripAmount
-    ) {
-      const amountDue =
-        trip.amount -
-        sumInvoicedTripAmount -
-        paidAndAmountDueExcludeInvoicePayment?.amountDue;
+      const sumInvoicedTripAmount = invoicedTrips.reduce((acc, invoice) => {
+        const request = invoice.requestIds.find(
+          (request) => request.requestId === trip.requestId
+        );
+        return acc + request.amount;
+      }, 0);
 
-      result.push({
-        ...trip,
-        amountDue,
-        vendor: vendorMap[trip.vendorId],
-        requester:
-          getName(vendorMap[trip.vendorId]) ||
-          `Direct Customer: ${getName(customerMap[trip.customerId])}`,
+      if (
+        paidAndAmountDueExcludeInvoicePayment?.amountDue > sumInvoicedTripAmount
+      ) {
+        const amountDue =
+          trip.amount -
+          sumInvoicedTripAmount -
+          paidAndAmountDueExcludeInvoicePayment?.amountDue;
 
-        customer: customerMap[trip.customerId],
-      });
+        result.push({
+          ...trip,
+          invoiceIds: invoicedTrips.map((invoice) => invoice.invoiceId) || [],
+          amountDue,
+          vendor: vendorMap[trip.vendorId],
+          requester:
+            getName(vendorMap[trip.vendorId]) ||
+            `Direct Customer: ${getName(customerMap[trip.customerId])}`,
+
+          customer: customerMap[trip.customerId],
+        });
+      }
+    } else {
+      const paidAndAmountDue = await Promise.resolve(getPaidAndAmountDue(trip));
+
+      if (paidAndAmountDue?.amountDue > 0) {
+        result.push({
+          ...trip,
+          invoiceIds: invoicedTrips.map((invoice) => invoice.invoiceId) || [],
+          amountDue: paidAndAmountDue?.amountDue,
+          paid: paidAndAmountDue?.paid,
+          vendor: vendorMap[trip.vendorId],
+          requester:
+            getName(vendorMap[trip.vendorId]) ||
+            `Direct Customer: ${getName(customerMap[trip.customerId])}`,
+
+          customer: customerMap[trip.customerId],
+        });
+      }
     }
   });
   await Promise.all(unInvoicedTripsWithVendor);
@@ -200,17 +217,34 @@ const attachTripProperties = async (trips, organisationId) => {
 
   const properties = trips.map(async (trip) => {
     const paidAndAmountDue = await getPaidAndAmountDue(trip);
-    const vendor = await VendorAgentModel.findById(trip.vendorId, {
-      companyName: 1,
-      firstName: 1,
-      lastName: 1,
-    }).lean();
+    let requester;
+    if (trip?.vendorId) {
+      const vendor = await VendorAgentModel.findById(
+        { _id: trip?.vendorId },
+        {
+          companyName: 1,
+          firstName: 1,
+          lastName: 1,
+        }
+      ).lean();
+      requester = getName(vendor);
+    } else {
+      const customer = await CustomerModel.findById(
+        { _id: trip?.customerId },
+        {
+          companyName: 1,
+          firstName: 1,
+          lastName: 1,
+        }
+      ).lean();
+      requester = getName(customer);
+    }
     return {
       ...trip,
       vehicle: vehicleMap[trip.vehicleId] || null,
       paid: paidAndAmountDue.paid,
       amountDue: paidAndAmountDue.amountDue,
-      requester: getName(vendor),
+      requester,
     };
   });
   return Promise.all(properties);
@@ -283,7 +317,7 @@ const getTrips = async (req, res) => {
 
 const unInvoicedUnpaidTrips = async (req, res) => {
   try {
-    const { organisationId, disabled } = req.query;
+    const { organisationId, disabled, editInvoice, unInvoiced } = req.query;
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
     const trips = await TripModel.find(
@@ -294,16 +328,16 @@ const unInvoicedUnpaidTrips = async (req, res) => {
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
 
-    const filterUnInvoicedTrips = await Promise.resolve(
-      getUninvoicedWaybills(trips)
-    );
+    const addPropsFunc = await Promise.resolve(addProps(trips, editInvoice));
+    let result;
 
-    const filterUnpaidTrips = filterUnInvoicedTrips.filter(
-      (trip) => trip.amountDue > 0
-    );
-
+    result = addPropsFunc.filter((trip) => trip.amountDue > 0);
+    if (unInvoiced === "true") {
+      result = result.filter((trip) => trip.invoiceIds?.length === 0);
+    }
+    // console.log(result);
     return res.status(200).send({
-      data: filterUnpaidTrips.sort(function (a, b) {
+      data: result.sort(function (a, b) {
         return b.createdAt - a.createdAt;
       }),
     });

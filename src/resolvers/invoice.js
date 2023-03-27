@@ -27,6 +27,7 @@ const generateUniqueCode = async (organisationId) => {
       {
         organisationId,
         invoiceId: code,
+        disabled: false,
       },
       { lean: true }
     );
@@ -63,6 +64,7 @@ const hasTripsInvoiced = async (requestIds) => {
   const requestIdsMap = requestIds.map((request) => request.requestId);
   const invoices = await InvoiceModel.find(
     {
+      disabled: false,
       "requestIds.requestId": { $in: requestIdsMap },
     },
     { lean: true }
@@ -183,20 +185,21 @@ const getInvoicePaidAndAmountDue = async (request, invoiceId) => {
   let amountDue = request?.amount;
   const paidInvoices = await IncomeModel.find({
     invoiceId,
+    disabled: false,
     "requestIds.requestId": requestId,
   }).lean();
   const flatPaidInvoicesReuestIds = paidInvoices.flatMap((invoice) => {
     return invoice?.requestIds;
   });
-if(flatPaidInvoicesReuestIds.length > 0){
-  const paidInvoicesRequestIds = flatPaidInvoicesReuestIds.filter(
-    (request) => request?.requestId === requestId
-  );
-  paid = paidInvoicesRequestIds.reduce((acc, request) => {
-    return acc + request?.amount;
-  }, 0);
-  amountDue = amountDue - paid;
-}
+  if (flatPaidInvoicesReuestIds.length > 0) {
+    const paidInvoicesRequestIds = flatPaidInvoicesReuestIds.filter(
+      (request) => request?.requestId === requestId
+    );
+    paid = paidInvoicesRequestIds.reduce((acc, request) => {
+      return acc + request?.amount;
+    }, 0);
+    amountDue = amountDue - paid;
+  }
 
   return { paid, amountDue };
 };
@@ -256,7 +259,7 @@ const formatInvoice = async (invoice) => {
       getInvoicePaidAndAmountDue(request, invoice?.invoiceId)
     );
     const { amountDue, paid } = calc;
-    console.log(amountDue, paid, request?.requestId);
+
     const invObj = {
       vendor: {
         ...vendorDetail,
@@ -270,6 +273,7 @@ const formatInvoice = async (invoice) => {
         ...tripDetail,
         amountDue,
         paid,
+        requester: getName(vendorDetail || customerDetail),
       },
     };
 
@@ -403,7 +407,11 @@ const getInvoice = async (req, res) => {
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
 
-    const invoice = await InvoiceModel.findOne({ _id, organisationId }).lean();
+    const invoice = await InvoiceModel.findOne({
+      _id,
+      organisationId,
+      disabled: false,
+    }).lean();
     if (!invoice) return res.status(400).send({ error: "invoice not found" });
     const formattedInvoice = await formatInvoice(invoice);
     return res.status(200).send({ data: formattedInvoice });
@@ -422,6 +430,7 @@ const getInvoiceByInvoiceId = async (req, res) => {
     const invoice = await InvoiceModel.findOne({
       invoiceId,
       organisationId,
+      disabled: false,
     }).lean();
     if (!invoice) return res.status(400).send({ error: "invoice not found" });
     const formattedInvoice = await formatInvoice(invoice);
@@ -432,13 +441,16 @@ const getInvoiceByInvoiceId = async (req, res) => {
 };
 
 const updateInvoice = async (req, res) => {
-  const { _id, userId, remark } = req.body;
+  const { _id, userId, remark, requestIds } = req.body;
   try {
     if (!_id) return res.status(400).json({ error: "Please provide _id" });
+
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
+    if (!requestIds || requestIds?.length === 0)
+      return res.status(400).json({ error: "Please provide requestIds" });
     const param = { invoiceId: _id, userId };
     const canPerformAction = await canEditOrganisationInvoice(param);
     if (!canPerformAction)
@@ -461,7 +473,7 @@ const updateInvoice = async (req, res) => {
         key !== "organisationId" &&
         key !== "remark" &&
         key !== "userId" &&
-        key !== "trips"
+        key !== "requestIds"
       ) {
         difference.push({
           field: key,
@@ -471,17 +483,19 @@ const updateInvoice = async (req, res) => {
       }
     }
 
-    const oldTrips = oldData?.trips;
-    const newTripIds = newData?.trips;
+    const oldRequestIds = oldData?.requestIds;
+    const newRequestIds = newData?.requestIds;
     let newAmount;
-    if (newTripIds?.length > 0) {
-      const verify = await Promise.resolve(verifyTrips(newTripIds));
+    if (newRequestIds?.length > 0) {
+      const verify = await Promise.resolve(verifyTrips(newRequestIds));
       if (!verify)
         return res.status(400).json({ error: "Please provide valid trips" });
-      const oldDataTrips = oldData?.trips;
 
-      const notInOldDataTrips = newTripIds.filter(
-        (trip) => !oldDataTrips.includes(trip)
+      const oldRequestIdsMap = oldRequestIds.map(
+        (request) => request?.requestId
+      );
+      const notInOldDataTrips = newRequestIds.filter(
+        (request) => !oldRequestIdsMap.includes(request?.requestId)
       );
       if (notInOldDataTrips.length > 0) {
         const alreadyInvoiced = await Promise.resolve(
@@ -493,9 +507,9 @@ const updateInvoice = async (req, res) => {
           });
       }
 
-      const totalAmount = await Promise.resolve(
-        calculateTotalAmount(newTripIds)
-      );
+      const totalAmount = newRequestIds.reduce((acc, curr) => {
+        return acc + curr?.amount;
+      }, 0);
 
       const oldAmount = oldData?.amount;
       if (totalAmount !== oldAmount) {
@@ -503,13 +517,20 @@ const updateInvoice = async (req, res) => {
       }
 
       //compare trips
-      const oldTripIds = oldTrips.map((trip) => trip?.tripId);
-      const newTrips = newTripIds.filter((trip) => !oldTripIds.includes(trip));
-      if (newTrips.length > 0) {
+
+      if (notInOldDataTrips.length > 0) {
         difference.push({
           field: "trips",
-          old: oldTripIds?.toString() || "not provided",
-          new: newTripIds?.toString() || "not provided",
+          old: oldRequestIdsMap?.toString() || "not provided",
+          new: newRequestIds?.map((request) => request?.requestId)?.toString(),
+        });
+      }
+      //compare amount
+      if (newAmount !== oldAmount) {
+        difference.push({
+          field: "amount",
+          old: oldAmount || "not provided",
+          new: newAmount,
         });
       }
     }
@@ -567,7 +588,10 @@ const updateInvoice = async (req, res) => {
   }
 };
 const validateInvoices = async (ids) => {
-  const Invoice = await InvoiceModel.find({ _id: { $in: ids } });
+  const Invoice = await InvoiceModel.find({
+    _id: { $in: ids },
+    disabled: false,
+  });
   if (Invoice.length !== ids.length) {
     return false;
   }

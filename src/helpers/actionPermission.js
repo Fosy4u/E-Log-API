@@ -140,6 +140,7 @@ const canDeleteOrEditOrganisationIncomeRemark = async (param) => {
   let canPerformAction = false;
   const income = await IncomeModel.findOne({
     _id: incomeId,
+    disabled: false,
   });
 
   if (income?.remarks?.length > 0) {
@@ -167,6 +168,7 @@ const canEditOrganisationIncome = async (param) => {
   let canPerformAction = false;
   const income = await IncomeModel.findOne({
     _id: incomeId,
+    disabled: false,
   });
   const organisationId = income?.organisationId;
   const user = await OrganisationUserModel.findOne({
@@ -184,6 +186,7 @@ const canDeleteOrEditOrganisationInvoiceRemark = async (param) => {
   let canPerformAction = false;
   const invoice = await InvoiceModel.findOne({
     _id: invoiceId,
+    disabled: false,
   });
 
   if (invoice?.remarks?.length > 0) {
@@ -211,6 +214,7 @@ const canEditOrganisationInvoice = async (param) => {
   let canPerformAction = false;
   const invoice = await InvoiceModel.findOne({
     _id: invoiceId,
+    disabled: false,
   });
   const organisationId = invoice?.organisationId;
   const user = await OrganisationUserModel.findOne({

@@ -397,6 +397,8 @@ let routes = (app) => {
     incomeResolver.createIncome
   );
   router.get("/incomes", authMiddleware, incomeResolver.getIncomes);
+  router.get("/incomes/invoiceId", authMiddleware, incomeResolver.getIncomesByInvoiceId);
+  router.get("/incomes/invoiceIds", authMiddleware, incomeResolver.getInvoicesRecordedIncome);
   router.get("/income", authMiddleware, incomeResolver.getIncome);
   router.get(
     "/income/remarks",

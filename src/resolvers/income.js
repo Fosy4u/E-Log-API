@@ -25,6 +25,7 @@ const generateUniqueCode = async (organisationId) => {
       {
         organisationId,
         incomeId: code,
+        disabled: false,
       },
       { lean: true }
     );
@@ -59,6 +60,7 @@ const validateAmount = async (request) => {
   const trip = await TripModel.findOne({ requestId: requestId });
   const originalAmount = trip?.amount;
   const { paid, amountDue } = await Promise.resolve(getPaidAndAmountDue(trip));
+  console.log("amountDue", amountDue, "amount", amount, "paid", paid);
   if (amountDue === 0) return false;
   if (amountDue < amount) return false;
   if (paid + amount > originalAmount) return false;
@@ -66,8 +68,7 @@ const validateAmount = async (request) => {
 };
 
 const createIncome = async (req, res) => {
-  const { organisationId, amount, date, userId, remark, requestIds, vendorId } =
-    req.body;
+  const { organisationId, amount, date, userId, remark, requestIds } = req.body;
 
   try {
     if (!organisationId) {
@@ -78,8 +79,6 @@ const createIncome = async (req, res) => {
 
     if (!amount)
       return res.status(400).json({ error: "Please provide amount" });
-    if (!vendorId)
-      return res.status(400).json({ error: "Please provide vendor id" });
 
     if (!date) return res.status(400).json({ error: "Please provide date" });
     if (!requestIds || requestIds.length === 0)
@@ -95,6 +94,10 @@ const createIncome = async (req, res) => {
       return res.status(400).send({
         error: "you dont have the permission to carry out this request",
       });
+    const vendorId = await TripModel.findOne(
+      { requestId: requestIds[0].requestId },
+      { vendorId: 1 }
+    ).lean().vendorId;
     let invalids = 0;
     const validate = await Promise.all(
       requestIds.map(async (request) => {
@@ -138,6 +141,7 @@ const createIncome = async (req, res) => {
     params = {
       ...req.body,
       incomeId,
+      vendorId,
 
       logs: [log],
       remarks,
@@ -228,6 +232,41 @@ const attachProperties = async (incomes) => {
   return incomeWithVehicleAndTrip;
 };
 
+const getInvoicesRecordedIncome = async (req, res) => {
+  const { organisationId, invoiceIds, disabled } = req.query;
+  try {
+    if (!organisationId) {
+      return res.status(400).json({
+        error: "Please provide organisation id",
+      });
+    }
+    if (!invoiceIds || invoiceIds.length === 0) {
+      return res.status(400).json({
+        error: "Please provide valid invoice ids",
+      });
+    }
+    let invoiceIdsMap = invoiceIds;
+    if (typeof invoiceIds === "string") {
+      invoiceIdsMap = invoiceIds.split(",");
+    }
+
+    const income = await IncomeModel.find({
+      organisationId,
+      disabled: disabled ? disabled : false,
+      invoiceId: { $in: invoiceIdsMap },
+    }).lean();
+
+    return res.status(200).send({
+      message: "Income fetched successfully",
+      data: income,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
 const getIncomes = async (req, res) => {
   const { organisationId, disabled } = req.query;
   try {
@@ -260,6 +299,41 @@ const getIncomes = async (req, res) => {
     });
   }
 };
+const getIncomesByInvoiceId = async (req, res) => {
+  const { organisationId, disabled, invoiceId } = req.query;
+  try {
+    if (!organisationId) {
+      return res.status(400).json({
+        error: "Please provide organisation id",
+      });
+    }
+    if (!invoiceId)
+      return res.status(400).json({ error: "Please provide invoice id" });
+    const income = await IncomeModel.find({
+      organisationId,
+      invoiceId,
+      disabled: disabled ? disabled : false,
+    }).lean();
+    if (!income)
+      return res
+        .status(401)
+        .json({ error: "Internal error in getting income" });
+
+    const propertiesAttached = await attachProperties(income, organisationId);
+
+    return res.status(200).send({
+      message: "Incomes for specified invoiceId fetched successfully",
+      data: propertiesAttached.sort(function (a, b) {
+        return new Date(b?.date) - new Date(a?.date);
+      }),
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
 
 const getIncome = async (req, res) => {
   try {
@@ -267,7 +341,11 @@ const getIncome = async (req, res) => {
     if (!_id) return res.status(400).send({ error: "income _id is required" });
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
-    const income = await IncomeModel.findOne({ _id, organisationId }).lean();
+    const income = await IncomeModel.findOne({
+      _id,
+      organisationId,
+      disabled: false,
+    }).lean();
     if (!income) return res.status(400).send({ error: "income not found" });
     const propertiesAttached = await attachProperties([income], organisationId);
 
@@ -404,7 +482,7 @@ const updateIncome = async (req, res) => {
   }
 };
 const validateIncomes = async (ids) => {
-  const Income = await IncomeModel.find({ _id: { $in: ids } });
+  const Income = await IncomeModel.find({ _id: { $in: ids }, disabled: false });
   if (Income.length !== ids.length) {
     return false;
   }
@@ -770,7 +848,9 @@ module.exports = {
   createIncome,
   getIncomes,
   getIncome,
+  getIncomesByInvoiceId,
   updateIncome,
   deleteIncomes,
   getIncomeLogs,
+  getInvoicesRecordedIncome,
 };
