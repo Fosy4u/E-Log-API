@@ -1,11 +1,11 @@
 {
   "name": "e-log-api",
   "version": "1.0.0",
-  "description": "the apis for E-stocker Solution owned by FosyTech",
+  "description": "the api is owned by NemFra",
   "main": "src/server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "server.js"
+    "start": "node src/server.js"
   },
   "keywords": [
     "file",
