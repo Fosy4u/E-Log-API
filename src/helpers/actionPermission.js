@@ -6,6 +6,7 @@ const OrganisationUserModel = require("../models/organisationUsers");
 const ExpensesModel = require("../models/expenses");
 const IncomeModel = require("../models/income");
 const InvoiceModel = require("../models/invoice");
+const TyreModel = require("../models/tyre");
 
 const canDeleteOrEditOrganisationPartnerRemark = async (param) => {
   const { partnerId, remarkId, userId } = param;
@@ -88,6 +89,51 @@ const canEditOrganisationTrip = async (param) => {
   return canPerformAction;
 };
 
+const canDeleteOrEditOrganisationTyreRemark = async (param) => {
+  const { tyreId, remarkId, userId } = param;
+
+  let canPerformAction = false;
+  const tyre = await TyreModel.findOne({
+    _id: tyreId,
+  });
+
+  if (tyre?.remarks?.length > 0) {
+    const remark = tyre.remarks.find(
+      (remark) => remark._id.toString() === remarkId
+    );
+    console.log(remark);
+    if (remark) {
+      canPerformAction = remark.userId.toString() === userId;
+    }
+  }
+  return canPerformAction;
+};
+const canEditOrganisationTyre = async (param) => {
+  const { tyreId, userId } = param;
+  let canPerformAction = false;
+  const tyre = await TyreModel.findOne({
+    _id: tyreId,
+  });
+  const organisationId = tyre?.organisationId;
+  const user = await OrganisationUserModel.findOne({
+    _id: userId,
+    organisationId,
+  });
+  if (user) {
+    canPerformAction = true;
+  }
+  return canPerformAction;
+};
+const canCreateOrganisationTyre = async (param) => {
+  const { organisationId, userId } = param;
+
+  let canPerformAction = false;
+  const user = await OrganisationUserModel.findOne({ _id: userId });
+  if (user?.organisationId.toString() === organisationId) {
+    canPerformAction = true;
+  }
+  return canPerformAction;
+};
 const canDeleteOrEditOrganisationExpensesRemark = async (param) => {
   const { expensesId, remarkId, userId } = param;
 
@@ -242,4 +288,7 @@ module.exports = {
   canDeleteOrEditOrganisationInvoiceRemark,
   canEditOrganisationInvoice,
   canCreateOrganisationInvoice,
+  canDeleteOrEditOrganisationTyreRemark,
+  canEditOrganisationTyre,
+  canCreateOrganisationTyre,
 };

@@ -239,8 +239,16 @@ const attachTripProperties = async (trips, organisationId) => {
       ).lean();
       requester = getName(customer);
     }
+    let paymentStatus = "UNPAID";
+    if (paidAndAmountDue.paid === trip.amount) {
+      paymentStatus = "PAID";
+    }
+    if (paidAndAmountDue.paid > 0 && paidAndAmountDue.paid < trip.amount) {
+      paymentStatus = "PARTIALLY PAID";
+    }
     return {
       ...trip,
+      paymentStatus,
       vehicle: vehicleMap[trip.vehicleId] || null,
       paid: paidAndAmountDue.paid,
       amountDue: paidAndAmountDue.amountDue,
@@ -297,6 +305,35 @@ const getTrips = async (req, res) => {
       {
         organisationId,
         disabled: disabled || false,
+      },
+      { remarks: 0, logs: 0, timeline: 0 }
+    ).lean();
+    const tripsWithProperties = await attachTripProperties(
+      trips,
+      organisationId
+    );
+
+    return res.status(200).send({
+      data: tripsWithProperties.sort(function (a, b) {
+        return b.createdAt - a.createdAt;
+      }),
+    });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+const getTripsByVehicleId = async (req, res) => {
+  try {
+    const { organisationId, disabled, vehicleId } = req.query;
+    if (!organisationId)
+      return res.status(400).send({ error: "organisationId is required" });
+    if (!vehicleId)
+      return res.status(400).send({ error: "vehicleId is required" });
+    const trips = await TripModel.find(
+      {
+        organisationId,
+        disabled: disabled || false,
+        vehicleId,
       },
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
@@ -1473,4 +1510,5 @@ module.exports = {
   uploadWaybill,
   tripAction,
   getTripByRequestId,
+  getTripsByVehicleId,
 };

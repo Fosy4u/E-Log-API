@@ -27,7 +27,7 @@ const generateUniqueCode = async (organisationId) => {
       {
         organisationId,
         invoiceId: code,
-        disabled: false,
+       
       },
       { lean: true }
     );

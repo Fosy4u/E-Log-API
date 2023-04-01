@@ -28,7 +28,7 @@ const addImage = async (destination, filename) => {
       path.resolve(destination, "resized", filename),
       {
         public: true,
-        destination: `/drivers/${filename}`,
+        destination: `/expenses/${filename}`,
         metadata: {
           firebaseStorageDownloadTokens: uuidv4(),
         },
@@ -48,7 +48,7 @@ const addImage = async (destination, filename) => {
 const deleteImageFromFirebase = async (name) => {
   if (name) {
     storageRef
-      .file("/trucks/" + name)
+      .file("/expenses/" + name)
       .delete()
       .then(() => {
         console.log("del is", name);

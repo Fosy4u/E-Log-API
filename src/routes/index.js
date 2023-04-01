@@ -17,6 +17,7 @@ const expensesResolver = require("../resolvers/expenses");
 const templateResolver = require("../resolvers/template");
 const incomeResolver = require("../resolvers/income");
 const invoiceResolver = require("../resolvers/invoice");
+const tyreResolver = require("../resolvers/tyre");
 
 let routes = (app) => {
   router.get("/", homeResolver.getHome);
@@ -303,9 +304,22 @@ let routes = (app) => {
     tripResolver.createTrip
   );
   router.get("/trips", authMiddleware, tripResolver.getTrips);
-  router.get("/trips/univoiced/unpaid", authMiddleware, tripResolver.unInvoicedUnpaidTrips);
+  router.get(
+    "/trips/vehicleId",
+    authMiddleware,
+    tripResolver.getTripsByVehicleId
+  );
+  router.get(
+    "/trips/univoiced/unpaid",
+    authMiddleware,
+    tripResolver.unInvoicedUnpaidTrips
+  );
   router.get("/trip", authMiddleware, tripResolver.getTrip);
-  router.get("/trip/requestId", authMiddleware, tripResolver.getTripByRequestId);
+  router.get(
+    "/trip/requestId",
+    authMiddleware,
+    tripResolver.getTripByRequestId
+  );
   router.get("/trip/remarks", authMiddleware, tripResolver.getTripRemarks);
   router.get("/trip/logs", authMiddleware, tripResolver.getTripLogs);
   router.put("/trip/edit", authMiddleware, tripResolver.updateTrip);
@@ -397,8 +411,16 @@ let routes = (app) => {
     incomeResolver.createIncome
   );
   router.get("/incomes", authMiddleware, incomeResolver.getIncomes);
-  router.get("/incomes/invoiceId", authMiddleware, incomeResolver.getIncomesByInvoiceId);
-  router.get("/incomes/invoiceIds", authMiddleware, incomeResolver.getInvoicesRecordedIncome);
+  router.get(
+    "/incomes/invoiceId",
+    authMiddleware,
+    incomeResolver.getIncomesByInvoiceId
+  );
+  router.get(
+    "/incomes/invoiceIds",
+    authMiddleware,
+    incomeResolver.getInvoicesRecordedIncome
+  );
   router.get("/income", authMiddleware, incomeResolver.getIncome);
   router.get(
     "/income/remarks",
@@ -445,7 +467,11 @@ let routes = (app) => {
     invoiceResolver.getUnpaidInvoices
   );
   router.get("/invoice", authMiddleware, invoiceResolver.getInvoice);
-  router.get("/invoice/invoiceId", authMiddleware, invoiceResolver.getInvoiceByInvoiceId);
+  router.get(
+    "/invoice/invoiceId",
+    authMiddleware,
+    invoiceResolver.getInvoiceByInvoiceId
+  );
   router.get(
     "/invoice/remarks",
     authMiddleware,
@@ -476,8 +502,59 @@ let routes = (app) => {
     invoiceResolver.editInvoiceRemark
   );
 
+  //Tyre
+  router.post("/tyre/create", authMiddleware, tyreResolver.createTyre);
+  router.post(
+    "/tyres/inspection/record",
+    authMiddleware,
+    tyreResolver.recordTyreInspection
+  );
+  router.get("/tyres", authMiddleware, tyreResolver.getTyres);
+  router.get(
+    "/tyres/vehicleId",
+    authMiddleware,
+    tyreResolver.getTyresByVehicleId
+  );
+  router.get(
+    "/tyres/inspection/vehicleId",
+    authMiddleware,
+    tyreResolver.getTyreInspectionByVehicleId
+  );
+  router.get(
+    "/tyres/inspections/",
+    authMiddleware,
+    tyreResolver.getTyreInspections
+  );
+  router.get(
+    "/tyres/inspection/",
+    authMiddleware,
+    tyreResolver.getTyreInspection
+  );
+  router.get("/tyre", authMiddleware, tyreResolver.getTyre);
+  router.get("/tyre/remarks", authMiddleware, tyreResolver.getTyreRemarks);
+  router.get("/tyre/logs", authMiddleware, tyreResolver.getTyreLogs);
+  router.put("/tyre/edit", authMiddleware, tyreResolver.updateTyre);
+  router.put("/tyre/inspection/edit", authMiddleware, tyreResolver.updateTyreInspection);
+  router.put("/tyre/delete", authMiddleware, tyreResolver.deleteTyres);
+  router.put("/tyre/inspections/delete", authMiddleware, tyreResolver.deleteTyreInspections);
+  router.put("/tyre/restore", authMiddleware, tyreResolver.restoreTyres);
+  router.put("/tyre/inspections/restore", authMiddleware, tyreResolver.restoreTyreInspections);
+  router.put("/tyre/addRemark", authMiddleware, tyreResolver.addTyreRemark);
+  router.put(
+    "/tyre/deleteRemark",
+    authMiddleware,
+    tyreResolver.deleteTyreRemark
+  );
+  router.put("/tyre/editRemark", authMiddleware, tyreResolver.editTyreRemark);
+
   //Template
   router.get("/template", templateResolver.getTemplate);
+  router.put("/template/addTyreBrand", templateResolver.addTyreBrand);
+  router.put("/template/deleteTyreBrand", templateResolver.deleteTyreBrand);
+  router.put("/template/editTyreBrand", templateResolver.editTyreBrand);
+  router.put("/template/addTyreSize", templateResolver.addTyreSize);
+  router.put("/template/deleteTyreSize", templateResolver.deleteTyreSize);
+  router.put("/template/editTyreSize", templateResolver.editTyreSize);
 
   //OrganisationContact
   router.post(
