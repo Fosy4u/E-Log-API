@@ -1,4 +1,4 @@
-const dbUrl = require('../appSecrets.json')
+
 
 // this is for locally installed mongodb
 //module.exports = {
@@ -7,7 +7,7 @@ const dbUrl = require('../appSecrets.json')
 //   imgBucket: "image",
 // };
 const config = {
-  url: dbUrl.MONGODB_URI,
+  url: process.env.MONGODB_URI_DEV,
   database: "Data1",
   imgBucket: "pictures",
 };

@@ -1,11 +1,12 @@
 {
-  "name": "fosy-tech-api",
+  "name": "e-log-api",
   "version": "1.0.0",
-  "description": "the apis for E-stocker Solution owned by FosyTech",
+  "description": "the api is owned by NemFra",
   "main": "src/server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon src/server.js"
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
   },
   "keywords": [
     "file",
@@ -18,6 +19,7 @@
     "body-parser": "^1.20.0",
     "connect-busboy": "^1.0.0",
     "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
     "ejs": "^3.1.8",
     "express": "^4.17.3",
     "express-fileupload": "^1.3.1",

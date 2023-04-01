@@ -17,7 +17,6 @@ function authMiddleware(request, response, next) {
     .auth()
     .verifyIdToken(token)
     .then((res) => {
-      console.log("passed auth");
       next();
     })
     .catch((error) => {
