@@ -34,10 +34,13 @@ const start = async () => {
     });
     console.log("connected");
     initRoutes(app);
-     let port = 8080;
-    app.listen( () => {
-      console.log(`Running at localhost:${port}`);
-    });
+    // let port = 8080;
+    // app.listen(port, () => {
+    //   console.log(`Running at localhost:${port}`);
+    // });
+    app.listen(process.env.PORT || 8080, () => {
+      console.log("Server is running...");
+    } );
   } catch (error) {
     console.error(new Date(), "Error Starting Server::", error);
   }
