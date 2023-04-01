@@ -34,8 +34,8 @@ const start = async () => {
     });
     console.log("connected");
     initRoutes(app);
-    let port = 8080;
-    app.listen(port, () => {
+     let port = 8080;
+    app.listen( () => {
       console.log(`Running at localhost:${port}`);
     });
   } catch (error) {
