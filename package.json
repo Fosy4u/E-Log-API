@@ -1,11 +1,11 @@
 {
-  "name": "fosy-tech-api",
+  "name": "e-log-api",
   "version": "1.0.0",
   "description": "the apis for E-stocker Solution owned by FosyTech",
   "main": "src/server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon src/server.js"
+    "start": "server.js"
   },
   "keywords": [
     "file",
