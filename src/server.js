@@ -1,5 +1,7 @@
 
 const cors = require("cors");
+require('dotenv').config()
+
 const express = require("express");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
@@ -8,7 +10,10 @@ const { ServerApiVersion } = require("mongodb");
 
 
 
+
+
 const url = dbConfig.url;
+
 const app = express();
 
 // app.use(express.json()); // for parsing application/json
@@ -34,10 +39,6 @@ const start = async () => {
     });
     console.log("connected");
     initRoutes(app);
-    // let port = 8080;
-    // app.listen(port, () => {
-    //   console.log(`Running at localhost:${port}`);
-    // });
     app.listen(process.env.PORT || 8080, () => {
       console.log("Server is running...");
     } );
