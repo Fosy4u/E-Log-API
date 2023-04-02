@@ -5,7 +5,7 @@ const firebaseAdmin = require('firebase-admin');
  const config = require('../config/firebaseServiceAcc')
 
 
-
+console.log("config", config)
 const firebase = firebaseAdmin.initializeApp({
     credential: firebaseAdmin.credential.cert(config),
 });

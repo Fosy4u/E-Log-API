@@ -30,6 +30,7 @@ const { storageRef } = require("../config/firebase"); // reference to our db
 
 //saving image to firebase storage
 const addImage = async (req, filename) => {
+  console.log("filename is", filename);
   let url = {};
   if (filename) {
     const source = path.join(root + "/uploads/" + filename);
@@ -37,6 +38,7 @@ const addImage = async (req, filename) => {
       .resize(1024, 1024)
       .jpeg({ quality: 90 })
       .toFile(path.resolve(req.file.destination, "resized", filename));
+    console.log("saved to resized folder");
     const storage = await storageRef.upload(
       path.resolve(req.file.destination, "resized", filename),
       {
@@ -53,6 +55,7 @@ const addImage = async (req, filename) => {
       path.resolve(req.file.destination, "resized", filename)
     );
     await Promise.all([deleteSourceFile, deleteResizedFile]);
+    console.log("url is", url);
     return url;
   }
   return url;
@@ -1152,6 +1155,7 @@ const uploadWaybill = async (req, res) => {
     if (!trip) return res.status(400).send({ error: "trip not found" });
     let oldImageName;
     const filename = req.file.filename;
+    console.log("fileName", filename);
     const imageUrl = await addImage(req, filename);
     let updateTrip;
     let log;
@@ -1375,7 +1379,7 @@ const tripAction = async (req, res) => {
       const atDestinationTrip = await TripModel.findByIdAndUpdate(
         { _id: tripId },
         {
-          $set: { status: "Destination" },
+          $set: { status: "At Destination" },
           $push: { logs: log, timeline: timelineAction },
         },
         { new: true }
