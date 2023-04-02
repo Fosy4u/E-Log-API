@@ -1375,7 +1375,7 @@ const tripAction = async (req, res) => {
       const atDestinationTrip = await TripModel.findByIdAndUpdate(
         { _id: tripId },
         {
-          $set: { status: "At Destination" },
+          $set: { status: "Destination" },
           $push: { logs: log, timeline: timelineAction },
         },
         { new: true }
