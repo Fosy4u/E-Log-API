@@ -30,7 +30,7 @@ const { storageRef } = require("../config/firebase"); // reference to our db
 
 //saving image to firebase storage
 const addImage = async (req, filename) => {
-  console.log("filename is", filename);
+
   let url = {};
   if (filename) {
     const source = path.join(root + "/uploads/" + filename);
@@ -38,7 +38,7 @@ const addImage = async (req, filename) => {
       .resize(1024, 1024)
       .jpeg({ quality: 90 })
       .toFile(path.resolve(req.file.destination, "resized", filename));
-    console.log("saved to resized folder");
+   
     const storage = await storageRef.upload(
       path.resolve(req.file.destination, "resized", filename),
       {
@@ -55,7 +55,7 @@ const addImage = async (req, filename) => {
       path.resolve(req.file.destination, "resized", filename)
     );
     await Promise.all([deleteSourceFile, deleteResizedFile]);
-    console.log("url is", url);
+  
     return url;
   }
   return url;
@@ -375,7 +375,7 @@ const unInvoicedUnpaidTrips = async (req, res) => {
     if (unInvoiced === "true") {
       result = result.filter((trip) => trip.invoiceIds?.length === 0);
     }
-    // console.log(result);
+  
     return res.status(200).send({
       data: result.sort(function (a, b) {
         return b.createdAt - a.createdAt;
