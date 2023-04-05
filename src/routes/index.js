@@ -510,6 +510,7 @@ let routes = (app) => {
     tyreResolver.recordTyreInspection
   );
   router.get("/tyres", authMiddleware, tyreResolver.getTyres);
+  router.get("/tyres/params", authMiddleware, tyreResolver.getTyresByParams);
   router.get(
     "/tyres/vehicleId",
     authMiddleware,

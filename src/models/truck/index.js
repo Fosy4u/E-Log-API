@@ -49,6 +49,7 @@ const TruckSchema = new mongoose.Schema({
   assignedDriverId: { type: String, required: false },
   assignedPartnerId: { type: String, required: false },
   model: { type: String },
+  tyreCount: { type: Number, required: true },
   carDocs: CarDocs,
   maxLoad: { type: String, required: true },
   truckType: { type: String, required: true },

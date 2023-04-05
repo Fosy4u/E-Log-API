@@ -50,7 +50,7 @@ const TemplateSchema = new mongoose.Schema({
       "Nexen",
       "Pirelli",
       "Yokohama",
-      "Gallant"
+      "Gallant",
     ],
   },
   tyreSizes: {
@@ -108,6 +108,49 @@ const TemplateSchema = new mongoose.Schema({
       "185/55 R14",
       "185/55 R15",
       "185/55 R16",
+    ],
+  },
+  statusOptions: {
+    type: Array,
+    default: [
+      "Active",
+      "Spare",
+      "Scrap",
+      "Sold",
+      "Lost",
+      "Stolen",
+      "Damaged",
+      "Retired",
+      "Expired",
+    ],
+  },
+  tyreCountOptions: {
+    type: Array,
+    default: [
+      {
+        value: 4,
+        label: "4 Tyres Truck",
+      },
+      {
+        value: 8,
+        label: "8 Tyres Truck",
+      },
+      {
+        value: 10,
+        label: "10 Tyres Truck",
+      },
+      {
+        value: 12,
+        label: "12 Tyres Truck",
+      },
+      {
+        value: 14,
+        label: "14 Tyres Truck",
+      },
+      {
+        value: 16,
+        label: "16 Tyres Truck",
+      },
     ],
   },
   expenseType: {
