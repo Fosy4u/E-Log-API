@@ -56,6 +56,7 @@ const createTyre = async (req, res) => {
     remark,
     vehicleId,
     size,
+    status,
   } = req.body;
 
   try {
@@ -72,6 +73,8 @@ const createTyre = async (req, res) => {
         .json({ error: "Please provide estimated replacement date" });
     if (!size)
       return res.status(400).json({ error: "Please provide tyre size" });
+    if (!status)
+      return res.status(400).json({ error: "Please provide status" });
 
     if (!vehicleId)
       return res
@@ -93,6 +96,30 @@ const createTyre = async (req, res) => {
     );
     if (existed) {
       return res.status(400).json({ error: "Serial number already exist" });
+    }
+    if (status === "Active") {
+      const assignedTruck = await TruckModel.findOne({
+        _id: vehicleId,
+        organisationId,
+      });
+      if (!assignedTruck)
+        return res.status(400).json({ error: "Assigned Truck not found" });
+
+      const tyreCount = assignedTruck?.tyreCount;
+      const activeTruckTyres = await TyreModel.find(
+        {
+          vehicleId: vehicleId,
+          organisationId,
+          disabled: false,
+          status: "Active",
+        },
+        { _id: 1 }
+      ).lean();
+
+      if (activeTruckTyres.length >= tyreCount)
+        return res.status(400).json({
+          error: `Total active tyres for this truck is already reached : ${tyreCount}`,
+        });
     }
     const param = { organisationId, userId };
     const canPerformAction = await canCreateOrganisationTyre(param);
@@ -180,14 +207,6 @@ const recordTyreInspection = async (req, res) => {
       } = detail;
       if (!serialNo || !scratchType || !tyreHealthCheckRating) {
         detailIsvaild = false;
-        console.log(
-          "reached here 0",
-          serialNo,
-          scratchType,
-          tyreHealthCheckRating,
-          inflationPercentage,
-          bulge
-        );
       }
       const tyre = await TyreModel.findOne({
         organisationId,
@@ -318,6 +337,38 @@ const getTyres = async (req, res) => {
     });
   }
 };
+const getTyresByParams = async (req, res) => {
+  const { organisationId, disabled } = req.query;
+
+  try {
+    if (!organisationId) {
+      return res.status(400).json({
+        error: "Please provide organisation id",
+      });
+    }
+
+    const tyres = await TyreModel.find({
+      organisationId,
+      disabled: disabled ? disabled : false,
+      ...req.query,
+    }).lean();
+    if (!tyres) return res.status(200).json({ data: [] });
+
+    const tyresWithVehicle = await attachVehicle(tyres, organisationId);
+
+    return res.status(200).send({
+      message: "Tyre Inspections fetched successfully",
+      data: tyresWithVehicle.sort(function (a, b) {
+        return new Date(b?.purchaseDate) - new Date(a?.purchaseDate);
+      }),
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
 const getTyreInspections = async (req, res) => {
   const { organisationId, disabled } = req.query;
   try {
@@ -331,16 +382,21 @@ const getTyreInspections = async (req, res) => {
       disabled: disabled ? disabled : false,
     }).lean();
     if (!tyreInspections)
-      return res.status(401).json({ error: "Internal error in getting tyre Inspections" });
+      return res
+        .status(401)
+        .json({ error: "Internal error in getting tyre Inspections" });
 
-      const tyreInspectionsWithVehicle = await attachVehicle(tyreInspections, organisationId);
+    const tyreInspectionsWithVehicle = await attachVehicle(
+      tyreInspections,
+      organisationId
+    );
 
-      return res.status(200).send({
-        message: "Tyre Inspections fetched successfully",
-        data: tyreInspectionsWithVehicle.sort(function (a, b) {
-          return new Date(b?.date) - new Date(a?.date);
-        }),
-      });
+    return res.status(200).send({
+      message: "Tyre Inspections fetched successfully",
+      data: tyreInspectionsWithVehicle.sort(function (a, b) {
+        return new Date(b?.date) - new Date(a?.date);
+      }),
+    });
   } catch (error) {
     console.log(error);
     return res.status(500).json({
@@ -358,7 +414,7 @@ const getTyresByVehicleId = async (req, res) => {
     }
     if (!vehicleId)
       return res.status(400).json({ error: "Please provide vehicle id" });
-    console.log("vehicleId", vehicleId);
+
     const tyres = await TyreModel.find({
       organisationId,
       vehicleId,
@@ -430,7 +486,6 @@ const getTyre = async (req, res) => {
   }
 };
 const getTyreInspection = async (req, res) => {
-
   try {
     const { _id, organisationId } = req.query;
     if (!_id)
@@ -450,14 +505,39 @@ const getTyreInspection = async (req, res) => {
 };
 
 const updateTyre = async (req, res) => {
-  const { _id, userId, organisationId } = req.body;
+  const { _id, userId, organisationId, status, reason } = req.body;
   try {
     if (!_id) return res.status(400).json({ error: "Please provide _id" });
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-    const oldData = TyreModel.findById(_id, { lean: true });
+    const oldData = await TyreModel.findById(_id).lean();
+
+    const vehicleId = oldData?.vehicleId;
+
+    if (status === "Active" && oldData?.status !== "Active") {
+      const assignedTruck = await TruckModel.findOne({
+        _id: vehicleId,
+        organisationId,
+      });
+      if (!assignedTruck)
+        return res.status(400).json({ error: "Assigned Truck not found" });
+      const tyreCount = assignedTruck?.tyreCount;
+      const activeTruckTyres = await TyreModel.find(
+        {
+          vehicleId: vehicleId,
+          organisationId,
+          disabled: false,
+          status: "Active",
+        },
+        { _id: 1 }
+      ).lean();
+      if (activeTruckTyres.length >= tyreCount)
+        return res.status(400).json({
+          error: `Total active tyres for this truck is already reached : ${tyreCount}`,
+        });
+    }
     const newData = req.body;
     const difference = [];
 
@@ -520,7 +600,7 @@ const updateTyre = async (req, res) => {
       userId: userId,
       action: "edit",
       details: `Tyres - updated`,
-      reason: `updated tyres`,
+      reason: reason || "not provided",
       difference,
     };
 
@@ -602,7 +682,7 @@ const updateTyreInspection = async (req, res) => {
         new: newVehicle?.regNo,
       });
     }
-  
+
     if (req.body?.details) {
       const oldDetails = oldData?.details || [];
       const newDetails = req.body?.details || [];
@@ -646,7 +726,7 @@ const updateTyreInspection = async (req, res) => {
       },
       { new: true }
     );
-    console.log("reach here 3");
+
     if (!updateTyresInspection)
       return res
         .status(401)
@@ -767,17 +847,23 @@ const deleteTyreInspections = async (req, res) => {
   const { ids, userId } = req.body;
   try {
     if (!ids || ids.length === 0)
-      return res.status(400).send({ error: "No tyre inspection id is provided" });
+      return res
+        .status(400)
+        .send({ error: "No tyre inspection id is provided" });
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
     const isValid = await validateTyreInspections(ids);
     if (!isValid)
-      return res.status(400).send({ error: "Invalid tyre inspection id is provided" });
+      return res
+        .status(400)
+        .send({ error: "Invalid tyre inspection id is provided" });
     const isDisabled = await disableTyreInspections(ids, userId);
     if (!isDisabled)
-      return res.status(400).send({ error: "Error in deleting tyre inspections" });
+      return res
+        .status(400)
+        .send({ error: "Error in deleting tyre inspections" });
     return res
       .status(200)
       .send({ message: "Tyre Inspections deleted successfully", data: ids });
@@ -817,17 +903,23 @@ const restoreTyreInspections = async (req, res) => {
   const { ids, userId } = req.body;
   try {
     if (!ids || ids.length === 0)
-      return res.status(400).send({ error: "No tyre inspection id is provided" });
+      return res
+        .status(400)
+        .send({ error: "No tyre inspection id is provided" });
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
     const isValid = await validateTyreInspections(ids);
     if (!isValid)
-      return res.status(400).send({ error: "Invalid tyre inspection id is provided" });
+      return res
+        .status(400)
+        .send({ error: "Invalid tyre inspection id is provided" });
     const isDisabled = await enableTyreInspections(ids, userId);
     if (!isDisabled)
-      return res.status(400).send({ error: "Error in restoring tyre inspection" });
+      return res
+        .status(400)
+        .send({ error: "Error in restoring tyre inspection" });
     return res
       .status(200)
       .send({ message: "Tyre Inspections restored successfully", data: ids });
@@ -1154,6 +1246,7 @@ module.exports = {
   getTyreInspection,
   getTyreInspections,
   getTyres,
+  getTyresByParams,
   getTyresByVehicleId,
   getTyre,
   updateTyre,

@@ -30,7 +30,6 @@ const { storageRef } = require("../config/firebase"); // reference to our db
 
 //saving image to firebase storage
 const addImage = async (req, filename) => {
-
   let url = {};
   if (filename) {
     const source = path.join(root + "/uploads/" + filename);
@@ -38,7 +37,7 @@ const addImage = async (req, filename) => {
       .resize(1024, 1024)
       .jpeg({ quality: 90 })
       .toFile(path.resolve(req.file.destination, "resized", filename));
-   
+
     const storage = await storageRef.upload(
       path.resolve(req.file.destination, "resized", filename),
       {
@@ -55,7 +54,7 @@ const addImage = async (req, filename) => {
       path.resolve(req.file.destination, "resized", filename)
     );
     await Promise.all([deleteSourceFile, deleteResizedFile]);
-  
+
     return url;
   }
   return url;
@@ -273,8 +272,16 @@ const getTrip = async (req, res) => {
       [trip],
       organisationId
     );
+    let isInvoiced = false;
+    const invoiced = await InvoiceModel.findOne({
+      organisationId,
+      disabled: false,
+      "requestIds.requestId": trip?.requestId,
+    }).lean();
+    if (invoiced) isInvoiced = true;
 
-    return res.status(200).send({ data: tripsWithProperties[0] });
+    return res.status(200).send({ data: {...tripsWithProperties[0], isInvoiced} });
+    
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -375,7 +382,7 @@ const unInvoicedUnpaidTrips = async (req, res) => {
     if (unInvoiced === "true") {
       result = result.filter((trip) => trip.invoiceIds?.length === 0);
     }
-  
+
     return res.status(200).send({
       data: result.sort(function (a, b) {
         return b.createdAt - a.createdAt;
@@ -534,7 +541,7 @@ const getName = (contact) => {
 
 const updateTrip = async (req, res) => {
   try {
-    const { _id, organisationId, userId, vendorId } = req.body;
+    const { _id, organisationId, userId, vendorId, amount } = req.body;
     if (!_id) return res.status(400).send({ error: "trip _id is required" });
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
@@ -550,6 +557,20 @@ const updateTrip = async (req, res) => {
     const permitted = await canEditOrganisationTrip({ tripId: _id, userId });
     if (!permitted) {
       return res.status(400).send({ error: "you cannot edit this trip" });
+    }
+    const currentTrip = await TripModel.findOne({ _id, organisationId }).lean();
+    if (!currentTrip) return res.status(400).send({ error: "trip not found" });
+    if (amount) {
+      const invoiced = await InvoiceModel.findOne({
+        organisationId,
+        disabled: false,
+        "requestIds.requestId": currentTrip?.requestId,
+      }).lean();
+      if (invoiced) {
+        return res
+          .status(400)
+          .send({ error: "trip has been invoiced, cannot edit amount" });
+      }
     }
 
     if (req?.body?.vehicleId) {
@@ -571,9 +592,6 @@ const updateTrip = async (req, res) => {
           .send({ error: "vendorId is invalid for this organisation" });
       }
     }
-
-    const currentTrip = TripModel.findOne({ _id, organisationId }).lean();
-    if (!currentTrip) return res.status(400).send({ error: "trip not found" });
 
     const difference = [];
     const oldData = currentTrip;
