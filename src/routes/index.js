@@ -80,6 +80,9 @@ let routes = (app) => {
   );
 
   router.get("/user", organisationUsersResolver.getOrganisationUser);
+  router.get("/users", organisationUsersResolver.getOrganisationUsers);
+  router.put("/user/edit", organisationUsersResolver.updateOrganisationUser);
+  router.put("/user/upload", upload, organisationUsersResolver.uploadProfilePic);
 
   //Trucks
 
@@ -535,11 +538,23 @@ let routes = (app) => {
   router.get("/tyre/remarks", authMiddleware, tyreResolver.getTyreRemarks);
   router.get("/tyre/logs", authMiddleware, tyreResolver.getTyreLogs);
   router.put("/tyre/edit", authMiddleware, tyreResolver.updateTyre);
-  router.put("/tyre/inspection/edit", authMiddleware, tyreResolver.updateTyreInspection);
+  router.put(
+    "/tyre/inspection/edit",
+    authMiddleware,
+    tyreResolver.updateTyreInspection
+  );
   router.put("/tyre/delete", authMiddleware, tyreResolver.deleteTyres);
-  router.put("/tyre/inspections/delete", authMiddleware, tyreResolver.deleteTyreInspections);
+  router.put(
+    "/tyre/inspections/delete",
+    authMiddleware,
+    tyreResolver.deleteTyreInspections
+  );
   router.put("/tyre/restore", authMiddleware, tyreResolver.restoreTyres);
-  router.put("/tyre/inspections/restore", authMiddleware, tyreResolver.restoreTyreInspections);
+  router.put(
+    "/tyre/inspections/restore",
+    authMiddleware,
+    tyreResolver.restoreTyreInspections
+  );
   router.put("/tyre/addRemark", authMiddleware, tyreResolver.addTyreRemark);
   router.put(
     "/tyre/deleteRemark",
