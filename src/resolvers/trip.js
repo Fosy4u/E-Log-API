@@ -7,6 +7,7 @@ const OrganisationPartnerModel = require("../models/organisationPartner");
 const OrganisationProfileModel = require("../models/organisationProfile");
 const InvoiceModel = require("../models/invoice");
 const IncomeModel = require("../models/income");
+const TyreModel = require("../models/tyre");
 const {
   deleteLocalFile,
   getPaidAndAmountDue,
@@ -280,8 +281,9 @@ const getTrip = async (req, res) => {
     }).lean();
     if (invoiced) isInvoiced = true;
 
-    return res.status(200).send({ data: {...tripsWithProperties[0], isInvoiced} });
-    
+    return res
+      .status(200)
+      .send({ data: { ...tripsWithProperties[0], isInvoiced } });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -1318,6 +1320,14 @@ const tripAction = async (req, res) => {
         { $set: { status: "On Trip" } },
         { new: true }
       );
+      if (!upDateTruckStatus)
+        return res
+          .status(400)
+          .send({ error: "error in updating truck status" });
+      const tyres = await TyreModel.updateMany(
+        { vehicleId, status: "Active", disabled: false },
+        { $push: { trips: tripId } }
+      );
 
       return res.status(200).send({ data: assignVehicle });
     }
@@ -1435,6 +1445,7 @@ const tripAction = async (req, res) => {
             dropOffDate: new Date(),
             actualFuelLitres,
             actualFuelCost,
+            isCompleted: true,
           },
           $push: { logs: log, timeline: timelineAction },
         },
@@ -1489,6 +1500,10 @@ const tripAction = async (req, res) => {
           { new: true }
         );
       }
+      const upDateTyreTrip = await TyreModel.updateMany(
+        { tripId: tripId },
+        { $pull: { trips: tripId } }
+      );
       return res.status(200).send({ data: cancelTrip });
     }
     if (action === "resume") {

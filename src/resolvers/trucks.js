@@ -49,10 +49,11 @@ const deleteImageFromFirebase = async (name) => {
       .then(() => {
         console.log("del is", name);
         return true;
-      }).catch((err) => {
+      })
+      .catch((err) => {
         console.log("err is", err);
         return false;
-      });;
+      });
   }
 };
 
@@ -109,9 +110,11 @@ const getTruck = async (req, res) => {
   try {
     const { truckId } = req.query;
     if (!truckId) return res.status(400).send({ error: "truckId is required" });
-    const truck = await TruckModel.findById({ _id: truckId });
+    const truck = await TruckModel.findById({ _id: truckId }).lean();
+
     if (!truck) return res.status(400).send({ error: "no truck found" });
-    return res.status(200).send({ data: truck });
+    const addStatusToTrucks = await confirmActiveTruck(truck);
+    return res.status(200).send({ data: addStatusToTrucks });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -121,8 +124,16 @@ const getPartnerTrucks = async (req, res) => {
     const { partnerId } = req.query;
     if (!partnerId)
       return res.status(400).send({ error: "partnerId is required" });
-    const truck = await TruckModel.find({ assignedPartnerId: partnerId });
-    return res.status(200).send({ data: truck });
+    const trucks = await TruckModel.find({ assignedPartnerId: partnerId }).lean();
+
+    if (!trucks) return res.status(200).send([]);
+    const addStatusToTrucks = [];
+    await Promise.all(
+      trucks.map(async (truck) => {
+        return addStatusToTrucks.push(confirmActiveTruck(truck));
+      })
+    );
+    return res.status(200).send({ data: addStatusToTrucks });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -133,24 +144,46 @@ const getTruckByParam = async (req, res) => {
     const organisationId = req.query.organisationId;
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
-    const trucks = await TruckModel.find({ ...param });
+    const trucks = await TruckModel.find({ ...param }).lean();
     if (!trucks) return res.status(200).send([]);
-    return res.status(200).send({ data: trucks });
+    const addStatusToTrucks = [];
+    await Promise.all(
+      trucks.map(async (truck) => {
+        return addStatusToTrucks.push(confirmActiveTruck(truck));
+      })
+    );
+    return res.status(200).send({ data: addStatusToTrucks });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
+};
+const confirmActiveTruck = (truck) => {
+  const cloned = { ...truck };
+  if (!cloned.active) {
+    cloned.status === "inactive";
+  }
+  return cloned;
 };
 
 const getTrucks = async (req, res) => {
   try {
     const { organisationId, disabled } = req.query;
 
-    const trucks = await TruckModel.find({
-      organisationId,
-      disabled: disabled === "true" ? true : false,
-    }, { remarks: 0, logs: 0, timeline: 0 });
+    const trucks = await TruckModel.find(
+      {
+        organisationId,
+        disabled: disabled === "true" ? true : false,
+      },
+      { remarks: 0, logs: 0, timeline: 0 }
+    ).lean();
     if (!trucks) return res.status(400).send({ error: "no truck found" });
-    return res.status(200).send({ data: trucks });
+    const addStatusToTrucks = [];
+    await Promise.all(
+      trucks.map(async (truck) => {
+        return addStatusToTrucks.push(confirmActiveTruck(truck));
+      })
+    );
+    return res.status(200).send({ data: addStatusToTrucks });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }

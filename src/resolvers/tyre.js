@@ -87,9 +87,7 @@ const createTyre = async (req, res) => {
         .json({ error: "Please provide logged in user id" });
     if (!serialNo)
       return res.status(400).json({ error: "Please provide serial number" });
-    const vehicle = await TruckModel.findById({ _id: vehicleId });
-    if (!vehicle)
-      return res.status(400).json({ error: "Vehicle does not exist" });
+
     const existed = await TyreModel.findOne(
       { organisationId, serialNo },
       { lean: true }
@@ -97,14 +95,14 @@ const createTyre = async (req, res) => {
     if (existed) {
       return res.status(400).json({ error: "Serial number already exist" });
     }
-    if (status === "Active") {
-      const assignedTruck = await TruckModel.findOne({
-        _id: vehicleId,
-        organisationId,
-      });
-      if (!assignedTruck)
-        return res.status(400).json({ error: "Assigned Truck not found" });
+    const assignedTruck = await TruckModel.findOne({
+      _id: vehicleId,
+      organisationId,
+    });
+    if (!assignedTruck)
+      return res.status(400).json({ error: "Assigned Truck not found" });
 
+    if (status === "Active") {
       const tyreCount = assignedTruck?.tyreCount;
       const activeTruckTyres = await TyreModel.find(
         {
@@ -144,12 +142,28 @@ const createTyre = async (req, res) => {
         date: new Date(),
       });
     }
+    const trips = [];
+    if (assignedTruck?.status === "On Trip" && status === "Active") {
+      const trip = await TripModel.findOne(
+        {
+          vehicleId: assignedTruck._id,
+          organisationId,
+          disabled: false,
+          isCompleted: false,
+        },
+        { _id: 1 }
+      );
+      if (trip) {
+        trips.push(trip._id);
+      }
+    }
     let params;
 
     params = {
       ...req.body,
       logs: [log],
       remarks,
+      trips,
     };
 
     const newTyres = new TyreModel({
@@ -279,6 +293,16 @@ const recordTyreInspection = async (req, res) => {
     });
   }
 };
+const attachTrip = async (tyre) => {
+  const { trips } = tyre;
+  const matchedTrips = await TripModel.find({
+    _id: { $in: trips, disabled: false },
+  }).lean();
+  return {
+    ...tyre,
+    trips: matchedTrips,
+  };
+};
 
 const attachVehicle = async (tyres, organisationId) => {
   const vehicleIds = tyres.map((tyre) => {
@@ -325,7 +349,7 @@ const getTyres = async (req, res) => {
     const tyresWithVehicle = await attachVehicle(tyres, organisationId);
 
     return res.status(200).send({
-      message: "Tyre Inspections fetched successfully",
+      message: "Tyres fetched successfully",
       data: tyresWithVehicle.sort(function (a, b) {
         return new Date(b?.purchaseDate) - new Date(a?.purchaseDate);
       }),
@@ -480,7 +504,8 @@ const getTyre = async (req, res) => {
     const tyre = await TyreModel.findOne({ _id, organisationId }).lean();
     if (!tyre) return res.status(400).send({ error: "tyre not found" });
     const tyreWithVehicle = await attachVehicle([tyre], organisationId);
-    return res.status(200).send({ data: tyreWithVehicle[0] });
+    const tyreWithTrip = await attachTrip(tyreWithVehicle[0], organisationId);
+    return res.status(200).send({ data: tyreWithTrip });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
