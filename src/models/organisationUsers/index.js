@@ -8,6 +8,8 @@ const OrganisationUserSchema = new mongoose.Schema({
   organisationId: { type: String, required: true },
   firstName: { type: String, required: true },
   lastName: { type: String, required: true },
+  phone: { type: String, required: true },
+  address: { type: String, required: false },
   permissionGroups: { type: [String], required: true },
   hierarchyLevel: { type: String, required: false },
   isAdmin: { type: Boolean, required: true, default: false },
