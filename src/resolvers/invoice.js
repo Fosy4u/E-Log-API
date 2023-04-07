@@ -10,7 +10,7 @@ const {
   canCreateOrganisationInvoice,
 } = require("../helpers/actionPermission");
 const { getPaidAndAmountDue } = require("../helpers/utils");
-const IncomeModel = require("../models/income");
+const PaymentModel = require("../models/payment");
 
 function getRandomInt(min, max) {
   return min + Math.floor(Math.random() * (max - min + 1));
@@ -183,7 +183,7 @@ const getInvoicePaidAndAmountDue = async (request, invoiceId) => {
   const requestId = request?.requestId;
   let paid = 0;
   let amountDue = request?.amount;
-  const paidInvoices = await IncomeModel.find({
+  const paidInvoices = await PaymentModel.find({
     invoiceId,
     disabled: false,
     "requestIds.requestId": requestId,
@@ -355,7 +355,7 @@ const getUnpaidInvoices = async (req, res) => {
       { $match: { organisationId, disabled: false } },
       {
         $lookup: {
-          from: "income",
+          from: "payment",
           let: {
             parent_group: "$invoiceId",
           },

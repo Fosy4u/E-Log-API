@@ -2,9 +2,9 @@
 const mongoose = require("mongoose");
 const timestamp = require("mongoose-timestamp");
 
-const IncomeSchema = new mongoose.Schema({
+const PaymentSchema = new mongoose.Schema({
   organisationId: { type: String, required: true },
-  incomeId: { type: String, required: true },
+  paymentId: { type: String, required: true },
   invoiceId: { type: String },
   disabled: { type: Boolean, default: false },
   date: { type: String },
@@ -32,8 +32,8 @@ const IncomeSchema = new mongoose.Schema({
   ],
 });
 
-IncomeSchema.plugin(timestamp);
+PaymentSchema.plugin(timestamp);
 
-const IncomeModel = mongoose.model("income", IncomeSchema, "income");
+const PaymentModel = mongoose.model("payment", PaymentSchema, "payment");
 
-module.exports = IncomeModel;
+module.exports = PaymentModel;
