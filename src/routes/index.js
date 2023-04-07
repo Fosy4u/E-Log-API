@@ -15,7 +15,7 @@ const tripResolver = require("../resolvers/trip");
 const vendorAgentResolver = require("../resolvers/vendorAgent");
 const expensesResolver = require("../resolvers/expenses");
 const templateResolver = require("../resolvers/template");
-const incomeResolver = require("../resolvers/income");
+const paymentResolver = require("../resolvers/payment");
 const invoiceResolver = require("../resolvers/invoice");
 const tyreResolver = require("../resolvers/tyre");
 
@@ -405,54 +405,54 @@ let routes = (app) => {
     authMiddleware,
     expensesResolver.deleteExpensesImage
   );
-  //Income
+  //Payment
 
   router.post(
-    "/income/create",
+    "/payment/create",
     authMiddleware,
 
-    incomeResolver.createIncome
+    paymentResolver.createPayment
   );
-  router.get("/incomes", authMiddleware, incomeResolver.getIncomes);
+  router.get("/payments", authMiddleware, paymentResolver.getPayments);
   router.get(
-    "/incomes/invoiceId",
+    "/payments/invoiceId",
     authMiddleware,
-    incomeResolver.getIncomesByInvoiceId
+    paymentResolver.getPaymentsByInvoiceId
   );
   router.get(
-    "/incomes/invoiceIds",
+    "/payments/invoiceIds",
     authMiddleware,
-    incomeResolver.getInvoicesRecordedIncome
+    paymentResolver.getInvoicesRecordedPayment
   );
-  router.get("/income", authMiddleware, incomeResolver.getIncome);
+  router.get("/payment", authMiddleware, paymentResolver.getPayment);
   router.get(
-    "/income/remarks",
+    "/payment/remarks",
     authMiddleware,
-    incomeResolver.getIncomeRemarks
+    paymentResolver.getPaymentRemarks
   );
-  router.get("/income/logs", authMiddleware, incomeResolver.getIncomeLogs);
+  router.get("/payment/logs", authMiddleware, paymentResolver.getPaymentLogs);
   router.put(
-    "/income/edit",
+    "/payment/edit",
     authMiddleware,
 
-    incomeResolver.updateIncome
+    paymentResolver.updatePayment
   );
-  router.put("/income/delete", authMiddleware, incomeResolver.deleteIncomes);
+  router.put("/payment/delete", authMiddleware, paymentResolver.deletePayments);
 
   router.put(
-    "/income/addRemark",
+    "/payment/addRemark",
     authMiddleware,
-    incomeResolver.addIncomeRemark
+    paymentResolver.addPaymentRemark
   );
   router.put(
-    "/income/deleteRemark",
+    "/payment/deleteRemark",
     authMiddleware,
-    incomeResolver.deleteIncomeRemark
+    paymentResolver.deletePaymentRemark
   );
   router.put(
-    "/income/editRemark",
+    "/payment/editRemark",
     authMiddleware,
-    incomeResolver.editIncomeRemark
+    paymentResolver.editPaymentRemark
   );
 
   //Invoice

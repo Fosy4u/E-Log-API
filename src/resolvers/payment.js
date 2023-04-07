@@ -1,12 +1,12 @@
-const IncomeModel = require("../models/income");
+const PaymentModel = require("../models/payment");
 const VendorAgentModel = require("../models/vendorAgent");
 const TruckModel = require("../models/truck");
 const TripModel = require("../models/trip");
 const mongoose = require("mongoose");
 const {
-  canDeleteOrEditOrganisationIncomeRemark,
-  canEditOrganisationIncome,
-  canCreateOrganisationIncome,
+  canDeleteOrEditOrganisationPaymentRemark,
+  canEditOrganisationPayment,
+  canCreateOrganisationPayment,
 } = require("../helpers/actionPermission");
 const { numberWithCommas, getPaidAndAmountDue } = require("../helpers/utils");
 
@@ -21,10 +21,10 @@ const generateUniqueCode = async (organisationId) => {
   do {
     const randomVal = getRandomInt(1000000, 9999999);
     code = `${randomVal}`;
-    const exist = await IncomeModel.findOne(
+    const exist = await PaymentModel.findOne(
       {
         organisationId,
-        incomeId: code,
+        paymentId: code,
         disabled: false,
       },
       { lean: true }
@@ -67,7 +67,7 @@ const validateAmount = async (request) => {
   return true;
 };
 
-const createIncome = async (req, res) => {
+const createPayment = async (req, res) => {
   const { organisationId, amount, date, userId, remark, requestIds } = req.body;
 
   try {
@@ -89,7 +89,7 @@ const createIncome = async (req, res) => {
         .status(400)
         .json({ error: "Please provide logged in user id" });
     const param = { organisationId, userId };
-    const canPerformAction = await canCreateOrganisationIncome(param);
+    const canPerformAction = await canCreateOrganisationPayment(param);
     if (!canPerformAction)
       return res.status(400).send({
         error: "you dont have the permission to carry out this request",
@@ -114,18 +114,18 @@ const createIncome = async (req, res) => {
       });
     }
 
-    const incomeId = await generateUniqueCode(organisationId);
-    if (!incomeId)
+    const paymentId = await generateUniqueCode(organisationId);
+    if (!paymentId)
       return res
         .status(400)
-        .send({ error: "Internal error in generating incomeId" });
+        .send({ error: "Internal error in generating paymentId" });
 
     const log = {
       date: new Date(),
       userId: userId,
       action: "create",
-      details: `Income -  created`,
-      reason: `added new income`,
+      details: `Payment -  created`,
+      reason: `added new payment`,
     };
     let remarks = [];
 
@@ -140,19 +140,19 @@ const createIncome = async (req, res) => {
 
     params = {
       ...req.body,
-      incomeId,
+      paymentId,
       vendorId,
 
       logs: [log],
       remarks,
     };
 
-    const newIncome = new IncomeModel({
+    const newPayment = new PaymentModel({
       ...params,
     });
-    const saveIncome = await newIncome.save();
-    if (!saveIncome)
-      return res.status(401).json({ error: "Internal in saving income" });
+    const savePayment = await newPayment.save();
+    if (!savePayment)
+      return res.status(401).json({ error: "Internal in saving payment" });
 
     await Promise.all(
       requestIds.map(async (request) => {
@@ -163,20 +163,20 @@ const createIncome = async (req, res) => {
           action: "paid",
           details: `${numberWithCommas(
             amount
-          )} paid from incomeId - ${incomeId}`,
-          reason: `Income added to trip`,
+          )} paid from paymentId - ${paymentId}`,
+          reason: `Payment added to trip`,
         };
         const updateTrip = await updateTripLogs(requestId, log);
         if (!updateTrip)
           return res
             .status(401)
-            .json({ error: "Income recorded but failed to update trip log" });
+            .json({ error: "Payment recorded but failed to update trip log" });
       })
     );
 
     return res
       .status(200)
-      .send({ message: "Income created successfully", data: saveIncome });
+      .send({ message: "Payment created successfully", data: savePayment });
   } catch (error) {
     console.log(error);
     return res.status(500).json({
@@ -185,10 +185,10 @@ const createIncome = async (req, res) => {
   }
 };
 
-const attachProperties = async (incomes) => {
-  const vendorIds = incomes.map((income) => {
-    if (income.vendorId && income.vendorId !== "") {
-      return income.vendorId;
+const attachProperties = async (payments) => {
+  const vendorIds = payments.map((payment) => {
+    if (payment.vendorId && payment.vendorId !== "") {
+      return payment.vendorId;
     } else {
       return null;
     }
@@ -198,7 +198,7 @@ const attachProperties = async (incomes) => {
     { companyName: 1, firstName: 1, lastName: 1 }
   ).lean();
 
-  const tripobjs = incomes.map((income) => income.requestIds)?.flat();
+  const tripobjs = payments.map((payment) => payment.requestIds)?.flat();
   const tripIds = tripobjs.map((trip) => trip.requestId);
 
   const trips = await TripModel.find(
@@ -206,10 +206,10 @@ const attachProperties = async (incomes) => {
     { status: 1, requestId: 1, waybillNumber: 1 }
   ).lean();
 
-  const incomeWithVehicleAndTrip = incomes.map((income) => {
-    const vendor = vendors.find((vendor) => vendor._id == income.vendorId);
+  const paymentWithVehicleAndTrip = payments.map((payment) => {
+    const vendor = vendors.find((vendor) => vendor._id == payment.vendorId);
     const vendorName = getName(vendor);
-    const { requestIds } = income;
+    const { requestIds } = payment;
     let tripCollection = [];
     if (requestIds && requestIds.length > 0) {
       requestIds.map((request) => {
@@ -224,15 +224,15 @@ const attachProperties = async (incomes) => {
     }
 
     return {
-      ...income,
+      ...payment,
       vendorName,
       trips: tripCollection,
     };
   });
-  return incomeWithVehicleAndTrip;
+  return paymentWithVehicleAndTrip;
 };
 
-const getInvoicesRecordedIncome = async (req, res) => {
+const getInvoicesRecordedPayment = async (req, res) => {
   const { organisationId, invoiceIds, disabled } = req.query;
   try {
     if (!organisationId) {
@@ -250,15 +250,15 @@ const getInvoicesRecordedIncome = async (req, res) => {
       invoiceIdsMap = invoiceIds.split(",");
     }
 
-    const income = await IncomeModel.find({
+    const payment = await PaymentModel.find({
       organisationId,
       disabled: disabled ? disabled : false,
       invoiceId: { $in: invoiceIdsMap },
     }).lean();
 
     return res.status(200).send({
-      message: "Income fetched successfully",
-      data: income,
+      message: "Payment fetched successfully",
+      data: payment,
     });
   } catch (error) {
     console.log(error);
@@ -267,7 +267,7 @@ const getInvoicesRecordedIncome = async (req, res) => {
     });
   }
 };
-const getIncomes = async (req, res) => {
+const getPayments = async (req, res) => {
   const { organisationId, disabled } = req.query;
   try {
     if (!organisationId) {
@@ -275,19 +275,19 @@ const getIncomes = async (req, res) => {
         error: "Please provide organisation id",
       });
     }
-    const income = await IncomeModel.find({
+    const payment = await PaymentModel.find({
       organisationId,
       disabled: disabled ? disabled : false,
     }).lean();
-    if (!income)
+    if (!payment)
       return res
         .status(401)
-        .json({ error: "Internal error in getting income" });
+        .json({ error: "Internal error in getting payment" });
 
-    const propertiesAttached = await attachProperties(income, organisationId);
+    const propertiesAttached = await attachProperties(payment, organisationId);
 
     return res.status(200).send({
-      message: "Income fetched successfully",
+      message: "Payment fetched successfully",
       data: propertiesAttached.sort(function (a, b) {
         return new Date(b?.date) - new Date(a?.date);
       }),
@@ -299,7 +299,7 @@ const getIncomes = async (req, res) => {
     });
   }
 };
-const getIncomesByInvoiceId = async (req, res) => {
+const getPaymentsByInvoiceId = async (req, res) => {
   const { organisationId, disabled, invoiceId } = req.query;
   try {
     if (!organisationId) {
@@ -309,20 +309,20 @@ const getIncomesByInvoiceId = async (req, res) => {
     }
     if (!invoiceId)
       return res.status(400).json({ error: "Please provide invoice id" });
-    const income = await IncomeModel.find({
+    const payment = await PaymentModel.find({
       organisationId,
       invoiceId,
       disabled: disabled ? disabled : false,
     }).lean();
-    if (!income)
+    if (!payment)
       return res
         .status(401)
-        .json({ error: "Internal error in getting income" });
+        .json({ error: "Internal error in getting payment" });
 
-    const propertiesAttached = await attachProperties(income, organisationId);
+    const propertiesAttached = await attachProperties(payment, organisationId);
 
     return res.status(200).send({
-      message: "Incomes for specified invoiceId fetched successfully",
+      message: "Payments for specified invoiceId fetched successfully",
       data: propertiesAttached.sort(function (a, b) {
         return new Date(b?.date) - new Date(a?.date);
       }),
@@ -335,19 +335,19 @@ const getIncomesByInvoiceId = async (req, res) => {
   }
 };
 
-const getIncome = async (req, res) => {
+const getPayment = async (req, res) => {
   try {
     const { _id, organisationId } = req.query;
-    if (!_id) return res.status(400).send({ error: "income _id is required" });
+    if (!_id) return res.status(400).send({ error: "payment _id is required" });
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
-    const income = await IncomeModel.findOne({
+    const payment = await PaymentModel.findOne({
       _id,
       organisationId,
       disabled: false,
     }).lean();
-    if (!income) return res.status(400).send({ error: "income not found" });
-    const propertiesAttached = await attachProperties([income], organisationId);
+    if (!payment) return res.status(400).send({ error: "payment not found" });
+    const propertiesAttached = await attachProperties([payment], organisationId);
 
     return res.status(200).send({ data: propertiesAttached[0] });
   } catch (error) {
@@ -355,7 +355,7 @@ const getIncome = async (req, res) => {
   }
 };
 
-const updateIncome = async (req, res) => {
+const updatePayment = async (req, res) => {
   const { _id, userId, organisationId, requestIds } = req.body;
   console.log("requestIds", requestIds);
   try {
@@ -364,13 +364,13 @@ const updateIncome = async (req, res) => {
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-    const param = { incomeId: _id, userId };
-    const canPerformAction = await canEditOrganisationIncome(param);
+    const param = { paymentId: _id, userId };
+    const canPerformAction = await canEditOrganisationPayment(param);
     if (!canPerformAction)
       return res.status(400).send({
         error: "you dont have the permission to carry out this request",
       });
-    const oldData = await IncomeModel.findById(_id).lean();
+    const oldData = await PaymentModel.findById(_id).lean();
     console.log("oldData", oldData);
     const newData = req.body;
     const difference = [];
@@ -438,12 +438,12 @@ const updateIncome = async (req, res) => {
       date: new Date(),
       userId: userId,
       action: "update",
-      details: `Income - updated`,
-      reason: `updated income`,
+      details: `Payment - updated`,
+      reason: `updated payment`,
       difference,
     };
 
-    const updateIncome = await IncomeModel.findByIdAndUpdate(
+    const updatePayment = await PaymentModel.findByIdAndUpdate(
       _id,
       {
         ...req.body,
@@ -452,19 +452,19 @@ const updateIncome = async (req, res) => {
       { new: true }
     );
 
-    if (!updateIncome)
+    if (!updatePayment)
       return res
         .status(401)
-        .json({ error: "Internal error in updating income" });
+        .json({ error: "Internal error in updating payment" });
 
     await Promise.all(
-      updateIncome.requestIds.map(async (request) => {
+      updatePayment.requestIds.map(async (request) => {
         const requestLog = {
           date: new Date(),
           userId: userId,
           action: "edit payment",
-          details: `Income - updated`,
-          reason: `updated income`,
+          details: `Payment - updated`,
+          reason: `updated payment`,
           difference,
         };
         const updateTrip = await updateTripLogs(request.requestId, requestLog);
@@ -473,7 +473,7 @@ const updateIncome = async (req, res) => {
 
     return res
       .status(200)
-      .send({ message: "Income updated successfully", data: updateIncome });
+      .send({ message: "Payment updated successfully", data: updatePayment });
   } catch (error) {
     console.log(error);
     return res.status(500).json({
@@ -481,22 +481,22 @@ const updateIncome = async (req, res) => {
     });
   }
 };
-const validateIncomes = async (ids) => {
-  const Income = await IncomeModel.find({ _id: { $in: ids }, disabled: false });
-  if (Income.length !== ids.length) {
+const validatePayments = async (ids) => {
+  const Payment = await PaymentModel.find({ _id: { $in: ids }, disabled: false });
+  if (Payment.length !== ids.length) {
     return false;
   }
   return true;
 };
-const disableIncomes = async (ids, userId) => {
+const disablePayments = async (ids, userId) => {
   const log = {
     date: new Date(),
     userId: userId,
     action: "delete",
-    details: `Income -  deleted`,
-    reason: `deleted income`,
+    details: `Payment -  deleted`,
+    reason: `deleted payment`,
   };
-  const updateExp = await IncomeModel.updateMany(
+  const updateExp = await PaymentModel.updateMany(
     { _id: { $in: ids } },
     { disabled: true, $push: { logs: log } }
   );
@@ -504,24 +504,24 @@ const disableIncomes = async (ids, userId) => {
   return true;
 };
 
-const deleteIncomes = async (req, res) => {
+const deletePayments = async (req, res) => {
   const { ids, userId } = req.body;
   try {
     if (!ids || ids.length === 0)
-      return res.status(400).send({ error: "No income id is provided" });
+      return res.status(400).send({ error: "No payment id is provided" });
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-    const isValid = await validateIncomes(ids);
+    const isValid = await validatePayments(ids);
     if (!isValid)
-      return res.status(400).send({ error: "Invalid income id is provided" });
-    const isDisabled = await disableIncomes(ids, userId);
+      return res.status(400).send({ error: "Invalid payment id is provided" });
+    const isDisabled = await disablePayments(ids, userId);
     if (!isDisabled)
-      return res.status(400).send({ error: "Error in deleting Incomes" });
+      return res.status(400).send({ error: "Error in deleting Payments" });
     return res
       .status(200)
-      .send({ message: "Income deleted successfully", data: ids });
+      .send({ message: "Payment deleted successfully", data: ids });
   } catch (error) {
     console.log(error);
     return res.status(500).json({
@@ -530,11 +530,11 @@ const deleteIncomes = async (req, res) => {
   }
 };
 
-const getIncomeLogs = async (req, res) => {
+const getPaymentLogs = async (req, res) => {
   try {
     const { _id } = req.query;
-    if (!_id) return res.status(400).send({ error: "Income _id is required" });
-    const income = await IncomeModel.aggregate([
+    if (!_id) return res.status(400).send({ error: "Payment _id is required" });
+    const payment = await PaymentModel.aggregate([
       {
         $match: {
           _id: mongoose.Types.ObjectId(_id),
@@ -599,7 +599,7 @@ const getIncomeLogs = async (req, res) => {
       },
     ]);
 
-    const logs = income[0]?.logs;
+    const logs = payment[0]?.logs;
     if (!logs || logs?.length === 0) return res.status(200).send({ data: [] });
 
     return res.status(200).send({
@@ -610,21 +610,21 @@ const getIncomeLogs = async (req, res) => {
   }
 };
 
-const addIncomeRemark = async (req, res) => {
+const addPaymentRemark = async (req, res) => {
   try {
     const { _id, remarkObj } = req.body;
 
     const { remark, userId } = remarkObj;
 
-    if (!_id) return res.status(400).send({ error: "income_id is required" });
+    if (!_id) return res.status(400).send({ error: "payment_id is required" });
     if (!remark) return res.status(400).send({ error: "empty remark " });
 
     if (!userId)
       return res.status(400).send({ error: "current userId is required " });
-    const income = await IncomeModel.findById({ _id });
-    if (!income) return res.status(400).send({ error: "income not found" });
+    const payment = await PaymentModel.findById({ _id });
+    if (!payment) return res.status(400).send({ error: "payment not found" });
     remarkObj.date = new Date();
-    const updateRemark = await IncomeModel.findByIdAndUpdate(
+    const updateRemark = await PaymentModel.findByIdAndUpdate(
       {
         _id,
       },
@@ -640,9 +640,9 @@ const addIncomeRemark = async (req, res) => {
       userId,
       action: "remark",
       reason: "added remark",
-      details: `added remark on income `,
+      details: `added remark on payment `,
     };
-    const updateIncome = await IncomeModel.findByIdAndUpdate(
+    const updatePayment = await PaymentModel.findByIdAndUpdate(
       { _id },
       { $push: { logs: log } },
       { new: true }
@@ -655,22 +655,22 @@ const addIncomeRemark = async (req, res) => {
   }
 };
 
-const deleteIncomeRemark = async (req, res) => {
+const deletePaymentRemark = async (req, res) => {
   try {
-    const { incomeId, remarkId, userId } = req.body;
-    if (!incomeId)
-      return res.status(400).send({ error: "incomeId is required" });
+    const { paymentId, remarkId, userId } = req.body;
+    if (!paymentId)
+      return res.status(400).send({ error: "paymentId is required" });
     if (!remarkId)
       return res.status(400).send({ error: "remarkId is required" });
     if (!userId)
       return res.status(400).send({ error: "current userId is required" });
 
-    const income = await IncomeModel.findById({
-      _id: incomeId,
+    const payment = await PaymentModel.findById({
+      _id: paymentId,
     });
-    if (!income) return res.status(400).send({ error: "Income not found" });
-    const param = { incomeId, remarkId, userId };
-    const canPerformAction = await canDeleteOrEditOrganisationincomeRemark(
+    if (!payment) return res.status(400).send({ error: "Payment not found" });
+    const param = { paymentId, remarkId, userId };
+    const canPerformAction = await canDeleteOrEditOrganisationpaymentRemark(
       param
     );
     if (!canPerformAction)
@@ -682,12 +682,12 @@ const deleteIncomeRemark = async (req, res) => {
       userId,
       action: "delete",
       reason: "deleted remark",
-      details: `deleted remark on income`,
+      details: `deleted remark on payment`,
     };
 
-    const updateRemark = await IncomeModel.findByIdAndUpdate(
+    const updateRemark = await PaymentModel.findByIdAndUpdate(
       {
-        _id: incomeId,
+        _id: paymentId,
       },
       {
         $pull: {
@@ -703,23 +703,23 @@ const deleteIncomeRemark = async (req, res) => {
     return res.status(500).send(error.message);
   }
 };
-const editIncomeRemark = async (req, res) => {
+const editPaymentRemark = async (req, res) => {
   try {
-    const { incomeId, remarkId, userId, remark } = req.body;
-    if (!incomeId)
-      return res.status(400).send({ error: "incomeId is required" });
+    const { paymentId, remarkId, userId, remark } = req.body;
+    if (!paymentId)
+      return res.status(400).send({ error: "paymentId is required" });
     if (!remarkId)
       return res.status(400).send({ error: "remarkId is required" });
     if (!userId)
       return res.status(400).send({ error: "current userId is required" });
     if (!remark) return res.status(400).send({ error: "remark is required" });
 
-    const income = await IncomeModel.findById({
-      _id: incomeId,
+    const payment = await PaymentModel.findById({
+      _id: paymentId,
     });
-    if (!income) return res.status(400).send({ error: "income not found" });
-    const param = { incomeId, remarkId, userId };
-    const canPerformAction = await canDeleteOrEditOrganisationIncomeRemark(
+    if (!payment) return res.status(400).send({ error: "payment not found" });
+    const param = { paymentId, remarkId, userId };
+    const canPerformAction = await canDeleteOrEditOrganisationPaymentRemark(
       param
     );
     if (!canPerformAction)
@@ -727,9 +727,9 @@ const editIncomeRemark = async (req, res) => {
         .status(400)
         .send({ error: "you dont have the permission to edit this remark" });
 
-    const updateRemark = await IncomeModel.updateOne(
+    const updateRemark = await PaymentModel.updateOne(
       {
-        _id: incomeId,
+        _id: paymentId,
         remarks: { $elemMatch: { _id: remarkId } },
       },
 
@@ -745,10 +745,10 @@ const editIncomeRemark = async (req, res) => {
       userId,
       action: "edit",
       reason: "edited remark",
-      details: `edited remark on income`,
+      details: `edited remark on payment`,
     };
-    const updateIncome = await IncomeModel.findByIdAndUpdate(
-      { _id: incomeId },
+    const updatePayment = await PaymentModel.findByIdAndUpdate(
+      { _id: paymentId },
       { $push: { logs: log } },
       { new: true }
     );
@@ -759,11 +759,11 @@ const editIncomeRemark = async (req, res) => {
   }
 };
 
-const getIncomeRemarks = async (req, res) => {
+const getPaymentRemarks = async (req, res) => {
   try {
     const { _id } = req.query;
-    if (!_id) return res.status(400).send({ error: "income _id is required" });
-    const incomes = await IncomeModel.aggregate([
+    if (!_id) return res.status(400).send({ error: "payment _id is required" });
+    const payments = await PaymentModel.aggregate([
       {
         $match: {
           _id: mongoose.Types.ObjectId(_id),
@@ -828,7 +828,7 @@ const getIncomeRemarks = async (req, res) => {
       },
     ]);
 
-    const remarks = incomes[0]?.remarks;
+    const remarks = payments[0]?.remarks;
 
     if (!remarks || remarks?.length === 0) return res.status(200).send([]);
 
@@ -841,16 +841,16 @@ const getIncomeRemarks = async (req, res) => {
 };
 
 module.exports = {
-  addIncomeRemark,
-  deleteIncomeRemark,
-  editIncomeRemark,
-  getIncomeRemarks,
-  createIncome,
-  getIncomes,
-  getIncome,
-  getIncomesByInvoiceId,
-  updateIncome,
-  deleteIncomes,
-  getIncomeLogs,
-  getInvoicesRecordedIncome,
+  addPaymentRemark,
+  deletePaymentRemark,
+  editPaymentRemark,
+  getPaymentRemarks,
+  createPayment,
+  getPayments,
+  getPayment,
+  getPaymentsByInvoiceId,
+  updatePayment,
+  deletePayments,
+  getPaymentLogs,
+  getInvoicesRecordedPayment,
 };

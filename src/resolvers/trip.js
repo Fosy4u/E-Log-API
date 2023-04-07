@@ -6,7 +6,7 @@ const CustomerModel = require("../models/customer");
 const OrganisationPartnerModel = require("../models/organisationPartner");
 const OrganisationProfileModel = require("../models/organisationProfile");
 const InvoiceModel = require("../models/invoice");
-const IncomeModel = require("../models/income");
+const PaymentModel = require("../models/payment");
 const TyreModel = require("../models/tyre");
 const {
   deleteLocalFile,

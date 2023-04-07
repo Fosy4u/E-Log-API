@@ -4,7 +4,7 @@ const TripModel = require("../models/trip");
 const VendorAgentModel = require("../models/vendorAgent");
 const OrganisationUserModel = require("../models/organisationUsers");
 const ExpensesModel = require("../models/expenses");
-const IncomeModel = require("../models/income");
+const PaymentModel = require("../models/payment");
 const InvoiceModel = require("../models/invoice");
 const TyreModel = require("../models/tyre");
 
@@ -180,17 +180,17 @@ const canCreateOrganisationExpenses = async (param) => {
   return canPerformAction;
 };
 
-const canDeleteOrEditOrganisationIncomeRemark = async (param) => {
-  const { incomeId, remarkId, userId } = param;
+const canDeleteOrEditOrganisationPaymentRemark = async (param) => {
+  const { paymentId, remarkId, userId } = param;
 
   let canPerformAction = false;
-  const income = await IncomeModel.findOne({
-    _id: incomeId,
+  const payment = await PaymentModel.findOne({
+    _id: paymentId,
     disabled: false,
   });
 
-  if (income?.remarks?.length > 0) {
-    const remark = income.remarks.find(
+  if (payment?.remarks?.length > 0) {
+    const remark = payment.remarks.find(
       (remark) => remark._id.toString() === remarkId
     );
     console.log(remark);
@@ -200,7 +200,7 @@ const canDeleteOrEditOrganisationIncomeRemark = async (param) => {
   }
   return canPerformAction;
 };
-const canCreateOrganisationIncome = async (param) => {
+const canCreateOrganisationPayment = async (param) => {
   const { organisationId, userId } = param;
   let canPerformAction = false;
   const user = await OrganisationUserModel.findOne({ _id: userId });
@@ -209,14 +209,14 @@ const canCreateOrganisationIncome = async (param) => {
   }
   return canPerformAction;
 };
-const canEditOrganisationIncome = async (param) => {
-  const { incomeId, userId } = param;
+const canEditOrganisationPayment = async (param) => {
+  const { paymentId, userId } = param;
   let canPerformAction = false;
-  const income = await IncomeModel.findOne({
-    _id: incomeId,
+  const payment = await PaymentModel.findOne({
+    _id: paymentId,
     disabled: false,
   });
-  const organisationId = income?.organisationId;
+  const organisationId = payment?.organisationId;
   const user = await OrganisationUserModel.findOne({
     _id: userId,
     organisationId,
@@ -282,9 +282,9 @@ module.exports = {
   canDeleteOrEditOrganisationExpensesRemark,
   canCreateOrganisationExpenses,
   canEditOrganisationExpenses,
-  canDeleteOrEditOrganisationIncomeRemark,
-  canEditOrganisationIncome,
-  canCreateOrganisationIncome,
+  canDeleteOrEditOrganisationPaymentRemark,
+  canEditOrganisationPayment,
+  canCreateOrganisationPayment,
   canDeleteOrEditOrganisationInvoiceRemark,
   canEditOrganisationInvoice,
   canCreateOrganisationInvoice,

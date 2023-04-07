@@ -1,5 +1,5 @@
 const fs = require("fs");
-const IncomeModel = require("../models/income");
+const PaymentModel = require("../models/payment");
 
 const deleteLocalFile = async (path) => {
   return new Promise((resolve) => {
@@ -20,15 +20,15 @@ const getPaidAndAmountDue = async (trip) => {
   const { requestId } = trip;
   if (!requestId) return { paid, amountDue };
 
-  const incomes = await IncomeModel.find(
+  const payments = await PaymentModel.find(
     { disabled: false, "requestIds.requestId": requestId },
     {
       requestIds: 1,
     }
   ).lean();
 
-  if (incomes?.length === 0) return { paid, amountDue };
-  const requestIds = incomes.map((income) => income.requestIds);
+  if (payments?.length === 0) return { paid, amountDue };
+  const requestIds = payments.map((payment) => payment.requestIds);
   const requestPayments = requestIds
     .flat()
     .filter((payment) => payment?.requestId === requestId);
@@ -46,7 +46,7 @@ const getPaidAndAmountDueExcludeInvoicePayment = async (trip) => {
   const { requestId } = trip;
   if (!requestId) return { paid, amountDue };
 
-  const incomes = await IncomeModel.find(
+  const payments = await PaymentModel.find(
     {
       disabled: false,
       "requestIds.requestId": requestId,
@@ -58,8 +58,8 @@ const getPaidAndAmountDueExcludeInvoicePayment = async (trip) => {
     }
   ).lean();
 
-  if (incomes?.length === 0) return { paid, amountDue };
-  const requestIds = incomes.map((income) => income.requestIds);
+  if (payments?.length === 0) return { paid, amountDue };
+  const requestIds = payments.map((payment) => payment.requestIds);
   const requestPayments = requestIds
     .flat()
     .filter((payment) => payment?.requestId === requestId);
