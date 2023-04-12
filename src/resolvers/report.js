@@ -116,7 +116,7 @@ const resolveExpense = (expense) => {
     debit: amount,
     expensesId,
     expenseType,
-    date : moment(date).format("YYYY-MM-DD"),
+    date: moment(date).format("YYYY-MM-DD"),
     _id,
   };
 };
@@ -170,6 +170,27 @@ const addBalanceRevenue = async (sortedValues) => {
   }
   return newSortedValues;
 };
+const getNonTripPayments = async (organisationId, fromDate, toDate) => {
+  const payments = await PaymentModel.find({
+    organisationId,
+    isTrip: false,
+    date: {
+      $gte: fromDate,
+      $lte: toDate,
+    },
+  }).lean();
+
+  const nonTripPayments = payments.map((payment) => {
+    const { amount, date, _id } = payment;
+    return {
+      credit: amount,
+      date: moment(date).format("YYYY-MM-DD"),
+      _id,
+      revenueType: "Non Trip",
+    };
+  });
+  return nonTripPayments;
+};
 const getAllProfitAndLoss = async (req, res) => {
   try {
     const { organisationId, fromDate, toDate } = req.query;
@@ -205,11 +226,8 @@ const getAllProfitAndLoss = async (req, res) => {
       }
     ).lean();
 
-    const addedRequesterUndeliveredTrips = await Promise.resolve(
-      addRequester(undeliveredActiveTrips)
-    );
     const advanceRevenueTrips = await Promise.all(
-      addedRequesterUndeliveredTrips.map((trip) =>
+      undeliveredActiveTrips.map((trip) =>
         resolveTripIncome(trip, "advanceRevenue")
       )
     );
@@ -232,15 +250,13 @@ const getAllProfitAndLoss = async (req, res) => {
         dropOffDate: 1,
       }
     ).lean();
-    const addedRequesterDeliveredTrips = await Promise.resolve(
-      addRequester(deliveredActiveTrips)
-    );
+
     const balanceRevenueTrips = await Promise.all(
-      addedRequesterDeliveredTrips.map((trip) =>
+      deliveredActiveTrips.map((trip) =>
         resolveTripIncome(trip, "balanceRevenue")
       )
     );
-    console.log("from", from, "to", to);
+
     to.setUTCHours(23, 59, 59, 999);
     const expenses = await ExpensesModel.find(
       {
@@ -256,19 +272,21 @@ const getAllProfitAndLoss = async (req, res) => {
     const resolvedExpenses = await Promise.all(
       expenses.map((expense) => resolveExpense(expense))
     );
-    console.log("resolvedExpenses", resolvedExpenses);
+    const nonTripPayments = await getNonTripPayments(organisationId, from, to);
+
     const allValues = [
       ...advanceRevenueTrips,
       ...balanceRevenueTrips,
       ...resolvedExpenses,
+      ...nonTripPayments,
     ];
     const sortedValues = allValues.sort((a, b) => a.date - b.date);
     const sortedValuesWithBalance = await Promise.resolve(
       addBalanceRevenue(sortedValues)
     );
-    console.log("sortedValuesWithBalance", sortedValuesWithBalance);
+
     const totalRevenue = sortedValuesWithBalance.reduce((acc, value) => {
-      if (value.advanceRevenue || value.balanceRevenue) {
+      if (value.credit) {
         return acc + value.credit;
       }
       return acc;
@@ -291,8 +309,111 @@ const getAllProfitAndLoss = async (req, res) => {
     return res.status(500).send({ error: error.message });
   }
 };
+const resolveTripProfitAndLoss = (trips, expenses) => {
+  console.log("expenses", expenses);
+  const tripProfitAndLoss = [];
+  for (const trip of trips) {
+    const { _id, waybillNumber, amount, pickupDate, requestId } = trip;
+    const tripExpense = expenses.filter(
+      (expense) => expense.tripId === requestId
+    );
+    const totalExpense = tripExpense.reduce((acc, expense) => {
+      return acc + expense.amount;
+    }, 0);
+    const profit = amount - totalExpense;
+    tripProfitAndLoss.push({
+      _id,
+      waybillNumber,
+      pickupDate,
+      amount,
+      totalExpense,
+      profit,
+      requestId,
+      totalRevenue: amount,
+    });
+  }
+  return tripProfitAndLoss;
+};
+const getProfitAndLossByTrip = async (req, res) => {
+  try {
+    const { organisationId, fromDate, toDate } = req.query;
+    if (!organisationId) {
+      return res.status(400).send({ error: "organisationId is required" });
+    }
+    if (!fromDate || !toDate) {
+      return res.status(400).send({ error: "fromDate and toDate is required" });
+    }
+
+    const from = new Date(fromDate);
+    from.setUTCHours(0, 0, 0, 0);
+    const to = new Date(toDate);
+    to.setUTCHours(23, 59, 59, 999);
+    const excludeStatusAdvancePayments = ["Cancelled"];
+
+    const trips = await TripModel.find(
+      {
+        organisationId,
+        status: { $nin: excludeStatusAdvancePayments },
+        pickupDate: {
+          $gte: from,
+          $lte: to,
+        },
+      },
+      {
+        amount: 1,
+        requestId: 1,
+        waybillNumber: 1,
+        vendorId: 1,
+        customerId: 1,
+        pickupDate: 1,
+      }
+    ).lean();
+
+    to.setUTCHours(23, 59, 59, 999);
+    const expenses = await ExpensesModel.find(
+      {
+        organisationId,
+        date: {
+          $gte: from,
+          $lte: to,
+        },
+        tripId: { $exists: true },
+      },
+      { amount: 1, date: 1, expensesId: 1, expenseType: 1, tripId: 1 }
+    ).lean();
+
+    const getResolvedProfitAndLoss = resolveTripProfitAndLoss(trips, expenses);
+    const sortedValues = getResolvedProfitAndLoss.sort(
+      (a, b) => a.pickupDate - b.pickupDate
+    );
+
+    const totalRevenue = sortedValues.reduce((acc, value) => {
+      if (value.amount) {
+        return acc + value.amount;
+      }
+      return acc;
+    }, 0);
+    const totalExpenses = sortedValues.reduce((acc, value) => {
+      if (value.totalExpense) {
+        return acc + value.totalExpense;
+      }
+      return acc;
+    }, 0);
+    const totalProfit = totalRevenue - totalExpenses;
+    const param = {
+      totalRevenue,
+      totalExpenses,
+      totalProfit,
+      data: sortedValues,
+    };
+    res.status(200).send({ data: param });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
 
 module.exports = {
   getLastUpdated,
   getAllProfitAndLoss,
+  getProfitAndLossByTrip,
 };

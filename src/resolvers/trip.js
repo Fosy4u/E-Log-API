@@ -321,6 +321,7 @@ const getTrips = async (req, res) => {
       },
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
+    
     const tripsWithProperties = await attachTripProperties(
       trips,
       organisationId
@@ -516,7 +517,13 @@ const createTrip = async (req, res) => {
       timeline,
       logs: [log],
     };
-    params.date = moment(req.body.date).toISOString();
+
+    params.pickupDate = moment(req.body.pickupDate).toISOString();
+    if (req.body.estimatedDropOffDate) {
+      params.estimatedDropOffDate = moment(
+        req.body.estimatedDropOffDate
+      ).toISOString();
+    }
     const createTrip = new TripModel({ ...params });
     const newTrip = await createTrip.save();
     // if (newTrip) {
@@ -697,8 +704,11 @@ const updateTrip = async (req, res) => {
     const params = {
       ...req.body,
     };
-    if (date) {
-      params.date = moment(date).toISOString();
+    params.pickupDate = moment(req.body.pickupDate).toISOString();
+    if (req.body.estimatedDropOffDate) {
+      params.estimatedDropOffDate = moment(
+        req.body.estimatedDropOffDate
+      ).toISOString();
     }
 
     const updateTrip = await TripModel.findByIdAndUpdate(

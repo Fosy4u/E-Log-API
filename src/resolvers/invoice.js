@@ -1,6 +1,6 @@
 const InvoiceModel = require("../models/invoice");
 const VendorAgentModel = require("../models/vendorAgent");
-
+const moment = require("moment");
 const CustomerModel = require("../models/customer");
 const TripModel = require("../models/trip");
 const mongoose = require("mongoose");
@@ -27,7 +27,6 @@ const generateUniqueCode = async (organisationId) => {
       {
         organisationId,
         invoiceId: code,
-       
       },
       { lean: true }
     );
@@ -158,6 +157,9 @@ const createInvoice = async (req, res) => {
       remark: formattedRemark,
       requestIds,
     };
+    if (req.body?.date) {
+      params.date = moment(req.body.date).toISOString();
+    }
 
     const newInvoice = new InvoiceModel({
       ...params,
@@ -322,6 +324,7 @@ const getInvoices = async (req, res) => {
       return res
         .status(401)
         .json({ error: "Internal error in getting invoice" });
+
 
     const formattedInvoices = await Promise.all(
       invoice.map(async (inv) => {
@@ -560,11 +563,17 @@ const updateInvoice = async (req, res) => {
       reason: `updated invoice`,
       difference,
     };
+    const params = {
+      ...req.body,
+    };
+    if (req.body?.date) {
+      params.date = moment(req.body.date).toISOString();
+    }
 
     const updateInvoice = await InvoiceModel.findByIdAndUpdate(
       _id,
       {
-        ...req.body,
+        ...params,
         amount: newAmount || oldData?.amount,
         remark: remark || remark === "" ? formattedRemark : oldData?.remark,
         $push: { logs: log },

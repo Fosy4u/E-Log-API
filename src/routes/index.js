@@ -588,6 +588,11 @@ let routes = (app) => {
     authMiddleware,
     reportResolver.getAllProfitAndLoss
   );
+  router.get(
+    "/report/profitAndLossByTrip/",
+    authMiddleware,
+    reportResolver.getProfitAndLossByTrip
+  );
 
   //OrganisationContact
   router.post(

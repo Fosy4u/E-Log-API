@@ -3,6 +3,7 @@ const VendorAgentModel = require("../models/vendorAgent");
 const TruckModel = require("../models/truck");
 const TripModel = require("../models/trip");
 const mongoose = require("mongoose");
+const moment = require("moment");
 const {
   canDeleteOrEditOrganisationPaymentRemark,
   canEditOrganisationPayment,
@@ -81,8 +82,15 @@ const createPayment = async (req, res) => {
       return res.status(400).json({ error: "Please provide amount" });
 
     if (!date) return res.status(400).json({ error: "Please provide date" });
-    if (!requestIds || requestIds.length === 0)
-      return res.status(400).json({ error: "Please provide requestIds" });
+
+    const invalidRequestIds =
+      requestIds ||
+      requestIds?.length > 0 ||
+      requestIds?.find((r) => !r.requestId);
+    if (invalidRequestIds)
+      return res
+        .status(400)
+        .json({ error: "Please provide  valid requestIds" });
 
     if (!userId)
       return res
@@ -94,24 +102,30 @@ const createPayment = async (req, res) => {
       return res.status(400).send({
         error: "you dont have the permission to carry out this request",
       });
-    const vendorId = await TripModel.findOne(
-      { requestId: requestIds[0].requestId },
-      { vendorId: 1 }
-    ).lean().vendorId;
-    let invalids = 0;
-    const validate = await Promise.all(
-      requestIds.map(async (request) => {
-        const valid = await validateAmount(request);
-        if (!valid) {
-          invalids++;
-        }
-      })
-    );
-    if (invalids > 0) {
-      return res.status(400).send({
-        error:
-          "Failed to validate amount: either invalid trip or amount is in conflict with trip amount due",
-      });
+    let vendorId;
+    if (requestIds?.length > 0 && !invalidRequestIds) {
+      vendorId = await TripModel.findOne(
+        { requestId: requestIds[0].requestId },
+        { vendorId: 1 }
+      ).lean().vendorId;
+    }
+    if (requestIds?.length > 0 && !invalidRequestIds) {
+      let invalids = 0;
+
+      const validate = await Promise.all(
+        requestIds?.map(async (request) => {
+          const valid = await validateAmount(request);
+          if (!valid) {
+            invalids++;
+          }
+        })
+      );
+      if (invalids > 0) {
+        return res.status(400).send({
+          error:
+            "Failed to validate amount: either invalid trip or amount is in conflict with trip amount due",
+        });
+      }
     }
 
     const paymentId = await generateUniqueCode(organisationId);
@@ -142,10 +156,14 @@ const createPayment = async (req, res) => {
       ...req.body,
       paymentId,
       vendorId,
+      isTrip: requestIds?.length > 0 && !invalidRequestIds,
 
       logs: [log],
       remarks,
     };
+    if (req.body?.date) {
+      params.date = moment(req.body.date).toISOString();
+    }
 
     const newPayment = new PaymentModel({
       ...params,
@@ -153,27 +171,27 @@ const createPayment = async (req, res) => {
     const savePayment = await newPayment.save();
     if (!savePayment)
       return res.status(401).json({ error: "Internal in saving payment" });
-
-    await Promise.all(
-      requestIds.map(async (request) => {
-        const { amount, requestId } = request;
-        const log = {
-          date: new Date(),
-          userId: userId,
-          action: "paid",
-          details: `${numberWithCommas(
-            amount
-          )} paid from paymentId - ${paymentId}`,
-          reason: `Payment added to trip`,
-        };
-        const updateTrip = await updateTripLogs(requestId, log);
-        if (!updateTrip)
-          return res
-            .status(401)
-            .json({ error: "Payment recorded but failed to update trip log" });
-      })
-    );
-
+    if (requestIds?.length > 0 && !invalidRequestIds) {
+      await Promise.all(
+        requestIds.map(async (request) => {
+          const { amount, requestId } = request;
+          const log = {
+            date: new Date(),
+            userId: userId,
+            action: "paid",
+            details: `${numberWithCommas(
+              amount
+            )} paid from paymentId - ${paymentId}`,
+            reason: `Payment added to trip`,
+          };
+          const updateTrip = await updateTripLogs(requestId, log);
+          if (!updateTrip)
+            return res.status(401).json({
+              error: "Payment recorded but failed to update trip log",
+            });
+        })
+      );
+    }
     return res
       .status(200)
       .send({ message: "Payment created successfully", data: savePayment });
@@ -283,7 +301,7 @@ const getPayments = async (req, res) => {
       return res
         .status(401)
         .json({ error: "Internal error in getting payment" });
-
+    
     const propertiesAttached = await attachProperties(payment, organisationId);
 
     return res.status(200).send({
@@ -347,7 +365,10 @@ const getPayment = async (req, res) => {
       disabled: false,
     }).lean();
     if (!payment) return res.status(400).send({ error: "payment not found" });
-    const propertiesAttached = await attachProperties([payment], organisationId);
+    const propertiesAttached = await attachProperties(
+      [payment],
+      organisationId
+    );
 
     return res.status(200).send({ data: propertiesAttached[0] });
   } catch (error) {
@@ -442,11 +463,17 @@ const updatePayment = async (req, res) => {
       reason: `updated payment`,
       difference,
     };
+    const params = {
+      ...req.body,
+    };
+    if (req.body?.date) {
+      params.date = moment(req.body.date).toISOString();
+    }
 
     const updatePayment = await PaymentModel.findByIdAndUpdate(
       _id,
       {
-        ...req.body,
+        ...params,
         logs: [...oldData.logs, log],
       },
       { new: true }
@@ -482,7 +509,10 @@ const updatePayment = async (req, res) => {
   }
 };
 const validatePayments = async (ids) => {
-  const Payment = await PaymentModel.find({ _id: { $in: ids }, disabled: false });
+  const Payment = await PaymentModel.find({
+    _id: { $in: ids },
+    disabled: false,
+  });
   if (Payment.length !== ids.length) {
     return false;
   }
