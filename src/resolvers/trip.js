@@ -8,6 +8,7 @@ const OrganisationProfileModel = require("../models/organisationProfile");
 const InvoiceModel = require("../models/invoice");
 const PaymentModel = require("../models/payment");
 const TyreModel = require("../models/tyre");
+const moment = require("moment");
 const {
   deleteLocalFile,
   getPaidAndAmountDue,
@@ -515,7 +516,7 @@ const createTrip = async (req, res) => {
       timeline,
       logs: [log],
     };
-
+    params.date = moment(req.body.date).toISOString();
     const createTrip = new TripModel({ ...params });
     const newTrip = await createTrip.save();
     // if (newTrip) {
@@ -543,7 +544,7 @@ const getName = (contact) => {
 
 const updateTrip = async (req, res) => {
   try {
-    const { _id, organisationId, userId, vendorId, amount } = req.body;
+    const { _id, organisationId, userId, vendorId, amount, date } = req.body;
     if (!_id) return res.status(400).send({ error: "trip _id is required" });
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
@@ -692,9 +693,17 @@ const updateTrip = async (req, res) => {
       reason: `updated trip`,
       difference,
     };
+
+    const params = {
+      ...req.body,
+    };
+    if (date) {
+      params.date = moment(date).toISOString();
+    }
+
     const updateTrip = await TripModel.findByIdAndUpdate(
       _id,
-      { ...req.body, $push: { logs: log } },
+      { ...params, $push: { logs: log } },
       { new: true }
     );
     if (updateTrip) {
@@ -718,6 +727,7 @@ const updateTrip = async (req, res) => {
         .status(200)
         .send({ message: "Trip updated", data: updateTrip });
     }
+    return res.status(400).send({ error: "Trip not updated" });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }

@@ -6,7 +6,7 @@ const Expenses = new mongoose.Schema({
   organisationId: { type: String, required: true },
   expensesId: { type: String, required: true },
   disabled: { type: Boolean, default: false },
-  date: { type: String, required: true },
+  date: { type: Date, required: true },
   vehicleId: { type: String },
   userId: { type: String, required: true },
   tripId: { type: String},
