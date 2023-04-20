@@ -84,13 +84,17 @@ const createPayment = async (req, res) => {
     if (!date) return res.status(400).json({ error: "Please provide date" });
 
     const invalidRequestIds =
-      requestIds ||
-      requestIds?.length > 0 ||
-      requestIds?.find((r) => !r.requestId);
+      requestIds?.length > 0 &&
+      requestIds?.find((r) => !r.requestId) &&
+      requestIds
+        ? true
+        : false;
+
     if (invalidRequestIds)
       return res
         .status(400)
         .json({ error: "Please provide  valid requestIds" });
+    console.log("invalidRequestIds", invalidRequestIds);
 
     if (!userId)
       return res
@@ -301,7 +305,7 @@ const getPayments = async (req, res) => {
       return res
         .status(401)
         .json({ error: "Internal error in getting payment" });
-    
+
     const propertiesAttached = await attachProperties(payment, organisationId);
 
     return res.status(200).send({

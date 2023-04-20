@@ -593,6 +593,51 @@ let routes = (app) => {
     authMiddleware,
     reportResolver.getProfitAndLossByTrip
   );
+  router.get(
+    "/report/profitAndLossByVehicle/",
+    authMiddleware,
+    reportResolver.getProfitAndLossByVehicle
+  );
+  router.get(
+    "/report/allExpenses/",
+    authMiddleware,
+    reportResolver.getAllExpenses
+  );
+  router.get(
+    "/report/expensesByTrip/",
+    authMiddleware,
+    reportResolver.getAllExpensesByTrip
+  );
+  router.get(
+    "/report/expensesByVehicle/",
+    authMiddleware,
+    reportResolver.getAllExpensesByVehicle
+  );
+  router.get(
+    "/report/nonTripExpenses/",
+    authMiddleware,
+    reportResolver.getNonTripExpenses
+  );
+  router.get(
+    "/report/payments/",
+    authMiddleware,
+    reportResolver.getAllPayments
+  );
+  router.get(
+    "/report/paymentsByTrip/",
+    authMiddleware,
+    reportResolver.getPaymentsByTrip
+  );
+  router.get(
+    "/report/paymentsByRequesters/",
+    authMiddleware,
+    reportResolver.getPaymentsByRequesters
+  );
+  router.get(
+    "/report/paymentsByNonTrip/",
+    authMiddleware,
+    reportResolver.getPaymentsByNonTrip
+  );
 
   //OrganisationContact
   router.post(

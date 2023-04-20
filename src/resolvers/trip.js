@@ -570,7 +570,7 @@ const updateTrip = async (req, res) => {
     }
     const currentTrip = await TripModel.findOne({ _id, organisationId }).lean();
     if (!currentTrip) return res.status(400).send({ error: "trip not found" });
-    if (amount) {
+    if (amount && amount !== currentTrip.amount) {
       const invoiced = await InvoiceModel.findOne({
         organisationId,
         disabled: false,

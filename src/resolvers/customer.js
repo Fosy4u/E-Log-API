@@ -3,12 +3,40 @@ const ReceiptModel = require("../models/receipt");
 const OrganisationContactModel = require("../models/organisationContact");
 //const SaleModel = require("../models/sales");
 const OrganisationUserModel = require("../models/organisationUsers");
+const randomColor = require("randomcolor");
 const CustomerModel = require("../models/customer");
 const {
   canDeleteOrEditOrganisationCustomerRemark,
 } = require("../helpers/actionPermission");
 
+//generate random color
+const generateColor = async (organisationId) => {
+  let color;
+  let found = true;
+  const excludedColors = ["rgb(164, 249, 184)"];
 
+  do {
+    color = randomColor({
+      luminosity: "dark",
+      format: "rgb",
+    });
+    const exist = await CustomerModel.findOne(
+      {
+        organisationId,
+        colorTag: color,
+      },
+      { lean: true }
+    );
+
+    if (exist || exist !== null || excludedColors.includes(color)) {
+      found = true;
+    } else {
+      found = false;
+    }
+  } while (found);
+
+  return color;
+};
 const createCustomer = async (req, res) => {
   const { organisationId, userId, remark, type } = req.body;
   try {
@@ -37,8 +65,10 @@ const createCustomer = async (req, res) => {
       details: `customer created`,
       reason: `added new customer`,
     };
+    const colorTag = await generateColor(organisationId);
     const params = {
       ...req.body,
+      colorTag,
       remarks,
       logs: [log],
     };
@@ -395,6 +425,7 @@ const getAllCustomers = async (req, res) => {
       organisationId,
       disabled: disabled || false,
     });
+
     if (!customers) {
       return res.status(404).json({
         error: "No customers found",
