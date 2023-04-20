@@ -6,6 +6,7 @@ const CustomerModel = require("../models/customer");
 const OrganisationPartnerModel = require("../models/organisationPartner");
 const OrganisationProfileModel = require("../models/organisationProfile");
 const InvoiceModel = require("../models/invoice");
+const DriverModel = require("../models/driver");
 const PaymentModel = require("../models/payment");
 const TyreModel = require("../models/tyre");
 const moment = require("moment");
@@ -13,6 +14,7 @@ const {
   deleteLocalFile,
   getPaidAndAmountDue,
   getPaidAndAmountDueExcludeInvoicePayment,
+  getName,
 } = require("../helpers/utils");
 const {
   canDeleteOrEditOrganisationTripRemark,
@@ -250,6 +252,15 @@ const attachTripProperties = async (trips, organisationId) => {
     if (paidAndAmountDue.paid > 0 && paidAndAmountDue.paid < trip.amount) {
       paymentStatus = "PARTIALLY PAID";
     }
+    const driverId = mongoose.Types.ObjectId(trip?.driverId);
+    const driver = await DriverModel.findById(
+      { _id: driverId },
+      {
+        firstName: 1,
+        lastName: 1,
+        phoneNo: 1,
+      }
+    ).lean();
     return {
       ...trip,
       paymentStatus,
@@ -257,6 +268,7 @@ const attachTripProperties = async (trips, organisationId) => {
       paid: paidAndAmountDue.paid,
       amountDue: paidAndAmountDue.amountDue,
       requester,
+      driver: { name: getName(driver), phoneNo: driver?.phoneNo },
     };
   });
   return Promise.all(properties);
@@ -321,7 +333,7 @@ const getTrips = async (req, res) => {
       },
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
-    
+
     const tripsWithProperties = await attachTripProperties(
       trips,
       organisationId
@@ -542,12 +554,14 @@ const createTrip = async (req, res) => {
   }
 };
 
-const getName = (contact) => {
-  if (contact?.companyName) return contact?.companyName;
-  if (contact?.firstName && contact?.lastName)
-    return `${contact?.firstName} ${contact?.lastName}`;
-  return null;
-};
+// const getName = (contact) => {
+//   if (contact?.companyName) return contact?.companyName;
+//   if (contact?.firstName && contact?.lastName)
+//     return `${contact?.firstName} ${contact?.lastName}`;
+//   if (contact?.firstName) return contact?.firstName;
+//   if (contact?.lastName) return contact?.lastName;
+//   return null;
+// };
 
 const updateTrip = async (req, res) => {
   try {
@@ -1296,15 +1310,24 @@ const tripAction = async (req, res) => {
     if (action === "assign vehicle") {
       if (!vehicleId)
         return res.status(400).send({ error: "vehicleId is required" });
-      const availableVehicle = await TruckModel.findOne({
-        _id: vehicleId,
-        status: "Available",
-      });
+
+      const availableVehicle = await TruckModel.findOne(
+        {
+          _id: vehicleId,
+          status: "Available",
+        },
+        { _id: 1, assignedDriverId: 1 }
+      );
 
       if (!availableVehicle && trip?.vehicleId !== vehicleId) {
         return res
           .status(400)
           .send({ error: "vehicle is not available or not found" });
+      }
+      if(!availableVehicle?.assignedDriverId){
+        return res
+        .status(400)
+        .send({ error: "vehicle is not assigned to any driver. You can only assign a vehicle that is currently assigned to a driver" });
       }
 
       log = {
@@ -1323,9 +1346,8 @@ const tripAction = async (req, res) => {
       const assignVehicle = await TripModel.findByIdAndUpdate(
         { _id: tripId },
         {
-          $set: {
-            vehicleId,
-          },
+          vehicleId,
+          driverId: availableVehicle?.assignedDriverId,
           $push: { logs: log, timeline: timelineAction },
           status: "Vehicle Assigned",
         },
@@ -1506,7 +1528,7 @@ const tripAction = async (req, res) => {
           $set: { status: "Cancelled" },
           timeline,
           $push: { logs: log },
-          $unset: { vehicleId: 1 },
+          $unset: { vehicleId: 1, driverId: 1 },
         },
 
         { new: true }

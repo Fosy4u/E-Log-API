@@ -13,6 +13,7 @@ const TripSchema = new mongoose.Schema({
   disabled: { type: Boolean, default: false },
   requestId: { type: String, required: true, unique: true },
   vehicleId: { type: String },
+  driverId: { type: String },
   organisationId: { type: String, required: true },
   isVendorRequested: { type: Boolean, required: true },
   customerId: { type: String },
