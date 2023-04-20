@@ -3,6 +3,7 @@ const VendorAgentModel = require("../models/vendorAgent");
 const TruckModel = require("../models/truck");
 const TripModel = require("../models/trip");
 const mongoose = require("mongoose");
+const moment = require("moment");
 const { storageRef } = require("../config/firebase"); // reference to our db
 const root = require("../../root");
 const path = require("path");
@@ -203,13 +204,16 @@ const createExpenses = async (req, res) => {
         remarks,
       };
     }
+
+    params.date = moment(req.body.date).toISOString();
+
     const newExpenses = new ExpensesModel({
       ...params,
     });
     const saveExpenses = await newExpenses.save();
     if (!saveExpenses)
       return res.status(401).json({ error: "Internal in saving expenses" });
-
+    console.log("saveExpenses", saveExpenses.date);
     return res
       .status(200)
       .send({ message: "Expenses created successfully", data: saveExpenses });
@@ -409,6 +413,9 @@ const updateExpenses = async (req, res) => {
       ...req.body,
       logs: [log],
     };
+    if (req.body?.date) {
+      params.date = moment(req.body.date).toISOString();
+    }
 
     const updateExpenses = await ExpensesModel.findByIdAndUpdate(
       _id,

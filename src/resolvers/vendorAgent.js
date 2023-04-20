@@ -4,10 +4,40 @@ const {
   verifyVehicleId,
   verifyVendorAgentId,
 } = require("../helpers/verifyValidity");
+const randomColor = require("randomcolor");
 const {
   canDeleteOrEditOrganisationVendorAgentRemark,
 } = require("../helpers/actionPermission");
 const mongoose = require("mongoose");
+
+//generate random color
+const generateColor = async (organisationId) => {
+  let color;
+  let found = true;
+  const excludedColors = ["rgb(164, 249, 184)"];
+
+  do {
+    color = randomColor({
+      luminosity: "dark",
+      format: "rgb",
+    });
+    const exist = await VendorAgentModel.findOne(
+      {
+        organisationId,
+        colorTag: color,
+      },
+      { lean: true }
+    );
+
+    if (exist || exist !== null || excludedColors.includes(color)) {
+      found = true;
+    } else {
+      found = false;
+    }
+  } while (found);
+
+  return color;
+};
 
 const createVendorAgent = async (req, res) => {
   const { organisationId, userId, remark } = req.body;
@@ -31,9 +61,11 @@ const createVendorAgent = async (req, res) => {
         date: new Date(),
       });
     }
+    const colorTag = await generateColor(organisationId);
 
     const params = {
       ...req.body,
+      colorTag,
       remarks,
     };
 

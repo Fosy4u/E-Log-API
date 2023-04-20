@@ -7,7 +7,7 @@ const InvoiceSchema = new mongoose.Schema({
   invoiceId: { type: String, required: true },
   vendorId: { type: String, required: true },
   disabled: { type: Boolean, default: false },
-  date: { type: String, required: true },
+  date: { type: Date, required: true },
   requestIds: {
     type: [
       {

@@ -23,6 +23,7 @@ const VendorAgentSchema = new mongoose.Schema({
   country: { type: String, required: false },
   region: { type: String, required: false },
   postCode: { type: String, required: false },
+  colorTag: { type: String, required: true },
   remarks: {
     type: [{ userId: String, remark: String, date: String }],
     required: false,

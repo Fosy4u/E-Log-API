@@ -31,6 +31,7 @@ const CustomerSchema = new mongoose.Schema({
   },
   localGovernmentArea: { type: String, required: false },
   social: SocialSchema,
+  colorTag: { type: String, required: true },
 
   logs: [
     {

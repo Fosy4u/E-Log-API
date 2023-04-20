@@ -2,12 +2,42 @@ const TruckModel = require("../models/truck");
 const TripModel = require("../models/trip");
 const DriverModel = require("../models/driver");
 const OrganisationPartnerModel = require("../models/organisationPartner");
+const randomColor = require("randomcolor");
 const { storageRef } = require("../config/firebase"); // reference to our db
 const root = require("../../root");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
 const { deleteLocalFile } = require("../helpers/utils");
+
+//generate random color
+const generateColor = async (organisationId) => {
+  let color;
+  let found = true;
+  const excludedColors = ["rgb(164, 249, 184)"];
+
+  do {
+    color = randomColor({
+      luminosity: "dark",
+      format: "rgb",
+    });
+    const exist = await TruckModel.findOne(
+      {
+        organisationId,
+        colorTag: color,
+      },
+      { lean: true }
+    );
+
+    if (exist || exist !== null || excludedColors.includes(color)) {
+      found = true;
+    } else {
+      found = false;
+    }
+  } while (found);
+
+  return color;
+};
 
 //saving image to firebase storage
 const addImage = async (req, filename) => {
@@ -85,8 +115,9 @@ const createTruck = async (req, res) => {
     if (req.file) {
       const filename = req.file.filename;
       const imageUrl = await addImage(req, filename);
+      const colorTag = await generateColor(organisationId);
 
-      const createTruck = new TruckModel({ ...req.body, imageUrl });
+      const createTruck = new TruckModel({ ...req.body, imageUrl, colorTag });
       const newTruck = await createTruck.save();
 
       if (!newTruck) {
@@ -94,7 +125,8 @@ const createTruck = async (req, res) => {
       }
       return res.status(200).send({ data: newTruck });
     } else {
-      const createTruck = new TruckModel({ ...req.body });
+      const colorTag = await generateColor(organisationId);
+      const createTruck = new TruckModel({ ...req.body, colorTag });
       const newTruck = await createTruck.save();
 
       if (!newTruck) {
@@ -124,7 +156,9 @@ const getPartnerTrucks = async (req, res) => {
     const { partnerId } = req.query;
     if (!partnerId)
       return res.status(400).send({ error: "partnerId is required" });
-    const trucks = await TruckModel.find({ assignedPartnerId: partnerId }).lean();
+    const trucks = await TruckModel.find({
+      assignedPartnerId: partnerId,
+    }).lean();
 
     if (!trucks) return res.status(200).send([]);
     const addStatusToTrucks = [];
@@ -172,11 +206,12 @@ const getTrucks = async (req, res) => {
     const trucks = await TruckModel.find(
       {
         organisationId,
-        disabled: disabled === "true" ? true : false,
+        // disabled: disabled === "true" ? true : false,
       },
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
     if (!trucks) return res.status(400).send({ error: "no truck found" });
+
     const addStatusToTrucks = [];
     await Promise.all(
       trucks.map(async (truck) => {

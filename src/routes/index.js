@@ -18,6 +18,7 @@ const templateResolver = require("../resolvers/template");
 const paymentResolver = require("../resolvers/payment");
 const invoiceResolver = require("../resolvers/invoice");
 const tyreResolver = require("../resolvers/tyre");
+const reportResolver = require("../resolvers/report");
 
 let routes = (app) => {
   router.get("/", homeResolver.getHome);
@@ -82,7 +83,11 @@ let routes = (app) => {
   router.get("/user", organisationUsersResolver.getOrganisationUser);
   router.get("/users", organisationUsersResolver.getOrganisationUsers);
   router.put("/user/edit", organisationUsersResolver.updateOrganisationUser);
-  router.put("/user/upload", upload, organisationUsersResolver.uploadProfilePic);
+  router.put(
+    "/user/upload",
+    upload,
+    organisationUsersResolver.uploadProfilePic
+  );
 
   //Trucks
 
@@ -571,6 +576,68 @@ let routes = (app) => {
   router.put("/template/addTyreSize", templateResolver.addTyreSize);
   router.put("/template/deleteTyreSize", templateResolver.deleteTyreSize);
   router.put("/template/editTyreSize", templateResolver.editTyreSize);
+
+  //report
+  router.get(
+    "/report/lastUpdate",
+    authMiddleware,
+    reportResolver.getLastUpdated
+  );
+  router.get(
+    "/report/allProfitAndLoss/",
+    authMiddleware,
+    reportResolver.getAllProfitAndLoss
+  );
+  router.get(
+    "/report/profitAndLossByTrip/",
+    authMiddleware,
+    reportResolver.getProfitAndLossByTrip
+  );
+  router.get(
+    "/report/profitAndLossByVehicle/",
+    authMiddleware,
+    reportResolver.getProfitAndLossByVehicle
+  );
+  router.get(
+    "/report/allExpenses/",
+    authMiddleware,
+    reportResolver.getAllExpenses
+  );
+  router.get(
+    "/report/expensesByTrip/",
+    authMiddleware,
+    reportResolver.getAllExpensesByTrip
+  );
+  router.get(
+    "/report/expensesByVehicle/",
+    authMiddleware,
+    reportResolver.getAllExpensesByVehicle
+  );
+  router.get(
+    "/report/nonTripExpenses/",
+    authMiddleware,
+    reportResolver.getNonTripExpenses
+  );
+  router.get(
+    "/report/payments/",
+    authMiddleware,
+    reportResolver.getAllPayments
+  );
+  router.get(
+    "/report/paymentsByTrip/",
+    authMiddleware,
+    reportResolver.getPaymentsByTrip
+  );
+  router.get(
+    "/report/paymentsByRequesters/",
+    authMiddleware,
+    reportResolver.getPaymentsByRequesters
+  );
+  router.get(
+    "/report/paymentsByNonTrip/",
+    authMiddleware,
+    reportResolver.getPaymentsByNonTrip
+  );
 
   //OrganisationContact
   router.post(

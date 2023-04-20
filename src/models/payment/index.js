@@ -7,11 +7,16 @@ const PaymentSchema = new mongoose.Schema({
   paymentId: { type: String, required: true },
   invoiceId: { type: String },
   disabled: { type: Boolean, default: false },
-  date: { type: String },
-  requestIds: { type: [{
-    requestId: String,
-    amount: Number,
-  }] },
+  date: { type: Date, required: true },
+  requestIds: {
+    type: [
+      {
+        requestId: String,
+        amount: Number,
+      },
+    ],
+  },
+  isTrip: { type: Boolean, default: false },
   vendorId: { type: String },
   amount: { type: Number },
   remarks: {

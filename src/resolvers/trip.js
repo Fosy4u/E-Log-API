@@ -8,6 +8,7 @@ const OrganisationProfileModel = require("../models/organisationProfile");
 const InvoiceModel = require("../models/invoice");
 const PaymentModel = require("../models/payment");
 const TyreModel = require("../models/tyre");
+const moment = require("moment");
 const {
   deleteLocalFile,
   getPaidAndAmountDue,
@@ -320,6 +321,7 @@ const getTrips = async (req, res) => {
       },
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
+    
     const tripsWithProperties = await attachTripProperties(
       trips,
       organisationId
@@ -516,6 +518,12 @@ const createTrip = async (req, res) => {
       logs: [log],
     };
 
+    params.pickupDate = moment(req.body.pickupDate).toISOString();
+    if (req.body.estimatedDropOffDate) {
+      params.estimatedDropOffDate = moment(
+        req.body.estimatedDropOffDate
+      ).toISOString();
+    }
     const createTrip = new TripModel({ ...params });
     const newTrip = await createTrip.save();
     // if (newTrip) {
@@ -543,7 +551,7 @@ const getName = (contact) => {
 
 const updateTrip = async (req, res) => {
   try {
-    const { _id, organisationId, userId, vendorId, amount } = req.body;
+    const { _id, organisationId, userId, vendorId, amount, date } = req.body;
     if (!_id) return res.status(400).send({ error: "trip _id is required" });
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
@@ -562,7 +570,7 @@ const updateTrip = async (req, res) => {
     }
     const currentTrip = await TripModel.findOne({ _id, organisationId }).lean();
     if (!currentTrip) return res.status(400).send({ error: "trip not found" });
-    if (amount) {
+    if (amount && amount !== currentTrip.amount) {
       const invoiced = await InvoiceModel.findOne({
         organisationId,
         disabled: false,
@@ -692,9 +700,20 @@ const updateTrip = async (req, res) => {
       reason: `updated trip`,
       difference,
     };
+
+    const params = {
+      ...req.body,
+    };
+    params.pickupDate = moment(req.body.pickupDate).toISOString();
+    if (req.body.estimatedDropOffDate) {
+      params.estimatedDropOffDate = moment(
+        req.body.estimatedDropOffDate
+      ).toISOString();
+    }
+
     const updateTrip = await TripModel.findByIdAndUpdate(
       _id,
-      { ...req.body, $push: { logs: log } },
+      { ...params, $push: { logs: log } },
       { new: true }
     );
     if (updateTrip) {
@@ -718,6 +737,7 @@ const updateTrip = async (req, res) => {
         .status(200)
         .send({ message: "Trip updated", data: updateTrip });
     }
+    return res.status(400).send({ error: "Trip not updated" });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
