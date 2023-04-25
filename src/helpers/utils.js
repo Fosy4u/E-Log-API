@@ -70,10 +70,19 @@ const getPaidAndAmountDueExcludeInvoicePayment = async (trip) => {
   amountDue = trip?.amount - paid;
   return { paid, amountDue };
 };
+const getName = (contact) => {
+  if (contact?.companyName) return contact?.companyName;
+  if (contact?.firstName && contact?.lastName)
+    return `${contact?.firstName} ${contact?.lastName}`;
+  if (contact?.firstName) return contact?.firstName;
+  if (contact?.lastName) return contact?.lastName;
+  return null;
+};
 
 module.exports = {
   deleteLocalFile,
   numberWithCommas,
   getPaidAndAmountDue,
   getPaidAndAmountDueExcludeInvoicePayment,
+  getName,
 };

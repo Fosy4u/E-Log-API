@@ -594,6 +594,11 @@ let routes = (app) => {
     reportResolver.getProfitAndLossByTrip
   );
   router.get(
+    "/report/profitAndLossMostRecentByTrip/",
+    authMiddleware,
+    reportResolver.getMostRecentProfitAndLossByTrip
+  );
+  router.get(
     "/report/profitAndLossByVehicle/",
     authMiddleware,
     reportResolver.getProfitAndLossByVehicle
@@ -637,6 +642,11 @@ let routes = (app) => {
     "/report/paymentsByNonTrip/",
     authMiddleware,
     reportResolver.getPaymentsByNonTrip
+  );
+  router.get(
+    "/report/tripsByTripProviders/",
+    authMiddleware,
+    reportResolver.getTopTripProviders
   );
 
   //OrganisationContact
