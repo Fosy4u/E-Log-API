@@ -296,7 +296,7 @@ const recordTyreInspection = async (req, res) => {
 const attachTrip = async (tyre) => {
   const { trips } = tyre;
   const matchedTrips = await TripModel.find({
-    _id: { $in: trips, disabled: false },
+    _id: { $in: trips },
   }).lean();
   return {
     ...tyre,
@@ -496,6 +496,7 @@ const getTyreInspectionByVehicleId = async (req, res) => {
 };
 
 const getTyre = async (req, res) => {
+  
   try {
     const { _id, organisationId } = req.query;
     if (!_id) return res.status(400).send({ error: "tyre _id is required" });
@@ -503,8 +504,12 @@ const getTyre = async (req, res) => {
       return res.status(400).send({ error: "organisationId is required" });
     const tyre = await TyreModel.findOne({ _id, organisationId }).lean();
     if (!tyre) return res.status(400).send({ error: "tyre not found" });
+
     const tyreWithVehicle = await attachVehicle([tyre], organisationId);
+
+
     const tyreWithTrip = await attachTrip(tyreWithVehicle[0], organisationId);
+
     return res.status(200).send({ data: tyreWithTrip });
   } catch (error) {
     return res.status(500).send({ error: error.message });

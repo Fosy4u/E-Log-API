@@ -643,6 +643,11 @@ let routes = (app) => {
     authMiddleware,
     reportResolver.getPaymentsByNonTrip
   );
+  router.get(
+    "/report/tripsByTripProviders/",
+    authMiddleware,
+    reportResolver.getTopTripProviders
+  );
 
   //OrganisationContact
   router.post(

@@ -303,7 +303,6 @@ const getAllProfitAndLoss = async (req, res) => {
     const sortedValuesWithBalance = await Promise.resolve(
       addBalanceRevenue(sortedValues)
     );
-   
 
     const totalRevenue = sortedValuesWithBalance.reduce((acc, value) => {
       if (value.credit) {
@@ -516,7 +515,6 @@ const getMostRecentProfitAndLossByTrip = async (req, res) => {
     const sortedValues = getResolvedProfitAndLoss.sort(
       (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
     );
-
 
     const totalRevenue = sortedValues.reduce((acc, value) => {
       if (value.amount) {
@@ -768,8 +766,16 @@ const getPaymentsByTrip = async (req, res) => {
       },
       { amount: 1, date: 1, paymentId: 1, invoiceId: 1, requestIds: 1 }
     ).lean();
+    const creditsAdded = [];
+    const addCredit = payments.forEach((payment) => {
+      const credit = payment.amount || 0;
+      creditsAdded.push({
+        ...payment,
+        credit,
+      });
+    });
 
-    const sortedValues = payments.sort(
+    const sortedValues = creditsAdded.sort(
       (a, b) => new Date(a.date) - new Date(b.date)
     );
 
@@ -784,6 +790,74 @@ const getPaymentsByTrip = async (req, res) => {
       data: sortedValues,
     };
 
+    res.status(200).send({ data: param });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+const getTopTripProviders = async (req, res) => {
+  try {
+    const { organisationId, fromDate, toDate } = req.query;
+    if (!organisationId) {
+      return res.status(400).send({ error: "organisationId is required" });
+    }
+    const from = new Date(fromDate);
+    from.setUTCHours(0, 0, 0, 0);
+    const to = new Date(toDate);
+    to.setUTCHours(23, 59, 59, 999);
+    const fetchParams = {
+      organisationId,
+      disabled: false,
+      ...(fromDate &&
+        toDate && {
+          pickupDate: {
+            $gte: from,
+            $lte: to,
+          },
+        }),
+    };
+    const trips = await TripModel.find(
+      { ...fetchParams },
+      { vendorId: 1, amount: 1, customerId: 1 }
+    ).lean();
+    const tripArr = [];
+    const totalAmount = trips.reduce((acc, value) => {
+      if (value.amount) {
+        return acc + value.amount;
+      }
+      return acc;
+    }, 0);
+    await Promise.all(
+      trips.map(async (trip) => {
+        let requester;
+        if (trip?.vendorId) {
+          const vendor = await VendorAgentModel.findById(trip.vendorId);
+          requester = getName(vendor);
+        } else if (trip?.customerId) {
+          const customer = await CustomerModel.findById(trip.customerId);
+          requester = getName(customer);
+        }
+        trip.requester = requester;
+        const found = tripArr.find((item) => item.requester === requester);
+        if (found) {
+          found.amount += trip.amount;
+          found.count += 1;
+          found.amountPercentage = (found.amount / totalAmount) * 100;
+        } else {
+          tripArr.push({
+            requester,
+            amount: trip.amount,
+            count: 1,
+            amountPercentage: (trip.amount / totalAmount) * 100,
+          });
+        }
+      })
+    );
+    const sortedValues = tripArr.sort((a, b) => b.amount - a.amount);
+    const param = {
+      totalAmount,
+      data: sortedValues,
+    };
     res.status(200).send({ data: param });
   } catch (error) {
     return res.status(500).send({ error: error.message });
@@ -979,8 +1053,16 @@ const getPaymentsByNonTrip = async (req, res) => {
       },
       { amount: 1, date: 1, paymentId: 1, invoiceId: 1, requestIds: 1 }
     ).lean();
+    const creditsAdded = [];
+    const addCredit = payments.forEach((payment) => {
+      const credit = payment.amount || 0;
+      creditsAdded.push({
+        ...payment,
+        credit,
+      });
+    });
 
-    const sortedValues = payments.sort(
+    const sortedValues = creditsAdded.sort(
       (a, b) => new Date(a.date) - new Date(b.date)
     );
 
@@ -1113,7 +1195,7 @@ const resoleTripsAndExpenses = (trips, expenses) => {
       _id,
       requestId,
       waybillNumber,
-      pickupDate,
+      date: pickupDate,
       totalTripExpenses,
     });
   }
@@ -1183,7 +1265,7 @@ const getAllExpensesByTrip = async (req, res) => {
     const mergedTripsAndExpenses = resoleTripsAndExpenses(trips, expenses);
 
     const sortedValues = mergedTripsAndExpenses.sort(
-      (a, b) => new Date(a.pickupDate) - new Date(b.pickupDate)
+      (a, b) => new Date(a.date) - new Date(b.date)
     );
 
     const totalExpenses = sortedValues.reduce((acc, value) => {
@@ -1275,4 +1357,5 @@ module.exports = {
   getPaymentsByNonTrip,
   getPaymentsByRequesters,
   getMostRecentProfitAndLossByTrip,
+  getTopTripProviders,
 };
