@@ -202,11 +202,13 @@ const confirmActiveTruck = (truck) => {
 const getTrucks = async (req, res) => {
   try {
     const { organisationId, disabled } = req.query;
+    if (!organisationId)
+      return res.status(400).send({ error: "organisationId is required" });
 
     const trucks = await TruckModel.find(
       {
         organisationId,
-        // disabled: disabled === "true" ? true : false,
+        disabled: disabled === "true" ? true : false,
       },
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();

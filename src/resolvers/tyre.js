@@ -500,7 +500,7 @@ const getTyre = async (req, res) => {
   try {
     const { _id, organisationId } = req.query;
     if (!_id) return res.status(400).send({ error: "tyre _id is required" });
-    if (!organisationId)
+    if (!organisationId )
       return res.status(400).send({ error: "organisationId is required" });
     const tyre = await TyreModel.findOne({ _id, organisationId }).lean();
     if (!tyre) return res.status(400).send({ error: "tyre not found" });

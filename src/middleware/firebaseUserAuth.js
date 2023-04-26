@@ -1,4 +1,13 @@
 const { firebase } = require("../config/firebase");
+const ObjectId = require("mongoose").Types.ObjectId;
+
+function isValidObjectId(id) {
+  if (ObjectId.isValid(id)) {
+    if (String(new ObjectId(id)) === id) return true;
+    return false;
+  }
+  return false;
+}
 
 function authMiddleware(request, response, next) {
   const headerToken = request.headers.authorization;
@@ -17,6 +26,15 @@ function authMiddleware(request, response, next) {
     .auth()
     .verifyIdToken(token)
     .then((res) => {
+      let organisationId =
+        request.query.organisationId || request.body.organisationId;
+
+      if (organisationId && !isValidObjectId(organisationId)) {
+        console.log("Invalid organisationId provided");
+        return response.status(400).json({
+          error: "Invalid organisationId provided via query url or body",
+        });
+      }
       next();
     })
     .catch((error) => {
