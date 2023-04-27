@@ -213,7 +213,7 @@ const attachTripProperties = async (trips, organisationId) => {
     {
       _id: { $in: vehicleIds },
     },
-    { assignedPartnerId: 1, regNo: 1 }
+    { assignedPartnerId: 1, regNo: 1, imageUrl: 1 }
   ).lean();
   const attachPartners = await attachPartnerToVehicle(vehicles, organisationId);
   const vehicleMap = {};
@@ -259,6 +259,7 @@ const attachTripProperties = async (trips, organisationId) => {
         firstName: 1,
         lastName: 1,
         phoneNo: 1,
+        imageUrl: 1,
       }
     ).lean();
     return {
@@ -268,7 +269,11 @@ const attachTripProperties = async (trips, organisationId) => {
       paid: paidAndAmountDue.paid,
       amountDue: paidAndAmountDue.amountDue,
       requester,
-      driver: { name: getName(driver), phoneNo: driver?.phoneNo },
+      driver: {
+        name: getName(driver),
+        phoneNo: driver?.phoneNo,
+        imageUrl: driver?.imageUrl,
+      },
     };
   });
   return Promise.all(properties);
@@ -1324,10 +1329,11 @@ const tripAction = async (req, res) => {
           .status(400)
           .send({ error: "vehicle is not available or not found" });
       }
-      if(!availableVehicle?.assignedDriverId){
-        return res
-        .status(400)
-        .send({ error: "vehicle is not assigned to any driver. You can only assign a vehicle that is currently assigned to a driver" });
+      if (!availableVehicle?.assignedDriverId) {
+        return res.status(400).send({
+          error:
+            "vehicle is not assigned to any driver. You can only assign a vehicle that is currently assigned to a driver",
+        });
       }
 
       log = {
