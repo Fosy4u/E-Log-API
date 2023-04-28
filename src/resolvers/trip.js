@@ -9,6 +9,7 @@ const InvoiceModel = require("../models/invoice");
 const DriverModel = require("../models/driver");
 const PaymentModel = require("../models/payment");
 const TyreModel = require("../models/tyre");
+const ExpensesModel = require("../models/expenses");
 const moment = require("moment");
 const {
   deleteLocalFile,
@@ -762,20 +763,62 @@ const updateTrip = async (req, res) => {
   }
 };
 
-const validateTrips = async (ids) => {
-  const invalidTrip = await ids.reduce(async (acc, _id) => {
-    let invalid = await acc;
-
-    const found = await TripModel.findById(_id).lean();
-
-    if (!found) {
-      invalid.push(_id);
+const validateTrips = async (ids, disabled) => {
+  let reason = "";
+  let valid = true;
+  for (const id of ids) {
+    const trip = await TripModel.findOne({
+      _id: id,
+      disabled: disabled || false,
+    }).lean();
+    if (!trip) {
+      valid = false;
+      reason =
+        ids.length > 1
+          ? "One of the selected trips is not found"
+          : "Trip not found";
+      break;
     }
-
-    return invalid;
-  }, []);
-
-  return invalidTrip;
+    if (!disabled ) {
+      const expenses = await ExpensesModel.find({
+        tripId: trip.requestId,
+        disabled: false,
+      }).lean();
+      if (expenses.length > 0) {
+        valid = false;
+        reason =
+          ids.length > 1
+            ? "One of the selected trips has recorded expenses. You need to first delete or disassociate the expenses from the trip"
+            : "Trip has recorded expenses. You need to first delete or disassociate the expenses from the trip";
+        break;
+      }
+      const invoice = await InvoiceModel.findOne({
+        disabled: false,
+        "requestIds.requestId": trip?.requestId,
+      }).lean();
+      if (invoice) {
+        valid = false;
+        reason =
+          ids.length > 1
+            ? "One of the selected trips has an invoice. You need to first delete or disassociate the invoice from the trip"
+            : "Trip has an invoice. You need to first delete or disassociate the invoice from the trip";
+        break;
+      }
+      const payment = await PaymentModel.findOne({
+        "requestIds.requestId": trip.requestId,
+        disabled: false,
+      });
+      if (payment) {
+        valid = false;
+        reason =
+          ids.length > 1
+            ? "One of the selected trips has recorded payments. You need to first delete or disassociate the payments from the trip"
+            : "Trip has recorded payments. You need to first delete or disassociate the payments from the trip";
+        break;
+      }
+    }
+  }
+  return { valid, reason };
 };
 
 const deleteRestoreTrips = async (trips, userId, disabledValue) => {
@@ -840,13 +883,10 @@ const deleteTrips = async (req, res) => {
     const { ids, userId } = req.body;
     if (!ids || ids.length === 0)
       return res.status(400).send({ error: "no trip id provided" });
-    const invalidTrips = await validateTrips(ids);
-    if (invalidTrips.length > 0) {
-      return res.status(400).send({
-        error: `request failed as the following trips(s)  ${
-          invalidTrips.length > 1 ? " do" : " does"
-        } not exist. Please contact NemFraTech support if this error persist unexpectedly : [${invalidTrips}]`,
-      });
+    const invalidTrips = await Promise.resolve(validateTrips(ids));
+    const { valid, reason } = invalidTrips;
+    if (!valid) {
+      return res.status(400).send({ error: reason });
     }
     const disabledValue = true;
     const disabledTrips = await deleteRestoreTrips(ids, userId, disabledValue);
@@ -863,16 +903,15 @@ const deleteTrips = async (req, res) => {
 const restoreTrips = async (req, res) => {
   try {
     const { ids, userId } = req.body;
-    const invalidTrips = await validateTrips(ids);
-    if (invalidTrips.length > 0) {
-      return res.status(400).send({
-        error: `request failed as the following trips(s)  ${
-          invalidTrips.length > 1 ? " do" : " does"
-        } not exist. Please contact NemFraTech support if this error persist unexpectedly : [${invalidTrips}]`,
-      });
+    const invalidTrips = await Promise.resolve(validateTrips(ids, true));
+    const { valid, reason } = invalidTrips;
+    if (!valid) {
+      return res.status(400).send({ error: reason });
     }
     const disabledValue = false;
-    const restoredTrips = await deleteRestoreTrips(ids, userId, disabledValue);
+    const restoredTrips = await Promise.resolve(
+      deleteRestoreTrips(ids, userId, disabledValue)
+    );
     if (restoredTrips.length > 0) {
       return res.status(200).send({
         message: "trip deleted successfully",
