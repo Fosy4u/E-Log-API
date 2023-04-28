@@ -779,7 +779,7 @@ const validateTrips = async (ids, disabled) => {
           : "Trip not found";
       break;
     }
-    if (!disabled ) {
+    if (!disabled) {
       const expenses = await ExpensesModel.find({
         tripId: trip.requestId,
         disabled: false,
@@ -868,6 +868,13 @@ const deleteRestoreTrips = async (trips, userId, disabledValue) => {
           {
             status: "Available",
           },
+          { new: true }
+        );
+        console.log("updateVehicle", disabled._id);
+        console.log("updateVehicle2", disabled._id.toString());
+        const updateTyre = await TyreModel.updateMany(
+          { trips: disabled._id.toString() },
+          { $pull: { trips: disabled._id.toString() } },
           { new: true }
         );
       }
@@ -1412,7 +1419,12 @@ const tripAction = async (req, res) => {
           .status(400)
           .send({ error: "error in updating truck status" });
       const tyres = await TyreModel.updateMany(
-        { vehicleId, status: "Active", disabled: false },
+        {
+          vehicleId,
+          status: "Active",
+          disabled: false,
+          trips: { $ne: tripId },
+        },
         { $push: { trips: tripId } }
       );
 
@@ -1553,6 +1565,29 @@ const tripAction = async (req, res) => {
       );
       if (!cancelReason)
         return res.status(400).send({ error: "cancel reason is required" });
+      let reason = "";
+      const expenses = await ExpensesModel.find({
+        tripId: trip.requestId,
+        disabled: false,
+      }).lean();
+      if (expenses.length > 0) {
+        reason =
+          ids.length > 1
+            ? "One of the selected trips has recorded expenses. You need to first delete or disassociate the expenses from the trip"
+            : "Trip has recorded expenses. You need to first delete or disassociate the expenses from the trip";
+        return res.status(400).send({ error: reason });
+      }
+      const payment = await PaymentModel.findOne({
+        "requestIds.requestId": trip.requestId,
+        disabled: false,
+      });
+      if (payment) {
+        reason =
+          ids.length > 1
+            ? "One of the selected trips has recorded payments. You need to first delete or disassociate the payments from the trip"
+            : "Trip has recorded payments. You need to first delete or disassociate the payments from the trip";
+        return res.status(400).send({ error: reason });
+      }
       log = {
         date: new Date(),
         userId,
@@ -1572,6 +1607,7 @@ const tripAction = async (req, res) => {
         {
           $set: { status: "Cancelled" },
           timeline,
+          cancelReason,
           $push: { logs: log },
           $unset: { vehicleId: 1, driverId: 1 },
         },

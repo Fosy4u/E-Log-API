@@ -17,6 +17,7 @@ const TripSchema = new mongoose.Schema({
   organisationId: { type: String, required: true },
   isVendorRequested: { type: Boolean, required: true },
   customerId: { type: String },
+  cancelReason: { type: String },
   vendorId: { type: String },
   truckType: { type: String },
   maxLoad: { type: String },
