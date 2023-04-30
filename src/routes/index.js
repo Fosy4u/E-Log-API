@@ -104,6 +104,20 @@ let routes = (app) => {
   router.put("/truck/edit", authMiddleware, upload, truckResolver.editTruck);
   router.put("/truck/delete", authMiddleware, truckResolver.deleteTruck);
   router.put("/truck/restore", authMiddleware, truckResolver.restoreTruck);
+  router.get("/truck/remarks", authMiddleware, truckResolver.getTruckRemarks);
+
+  router.put("/truck/addRemark", authMiddleware, truckResolver.addTruckRemark);
+  router.put(
+    "/truck/deleteRemark",
+    authMiddleware,
+    truckResolver.deleteTruckRemark
+  );
+  router.put(
+    "/truck/editRemark",
+    authMiddleware,
+    truckResolver.editTruckRemark
+  );
+
   router.put(
     "/truck/assignTruckDriver",
     authMiddleware,
@@ -647,6 +661,11 @@ let routes = (app) => {
     "/report/tripsByTripProviders/",
     authMiddleware,
     reportResolver.getTopTripProviders
+  );
+  router.get(
+    "/report/analyticsByVehicleID/",
+    authMiddleware,
+    reportResolver.getAnalyticsByVehicleID
   );
 
   //OrganisationContact

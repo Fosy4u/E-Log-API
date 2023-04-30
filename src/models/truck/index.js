@@ -54,6 +54,22 @@ const TruckSchema = new mongoose.Schema({
   carDocs: CarDocs,
   maxLoad: { type: String, required: true },
   truckType: { type: String, required: true },
+  logs: [
+    {
+      date: Date,
+      user: String,
+      userId: String,
+      action: String,
+      details: String,
+      comment: String,
+      difference: [{ _id: false, field: String, old: String, new: String }],
+      reason: String,
+    },
+  ],
+  remarks: {
+    type: [{ userId: String, remark: String, date: String }],
+    required: false,
+  },
   imageUrl: {
     link: { type: String, required: false },
     name: { type: String, required: false },

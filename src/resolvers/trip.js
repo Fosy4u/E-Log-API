@@ -339,6 +339,15 @@ const getTrips = async (req, res) => {
       },
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
+    await Promise.all(
+      trips.map(async (trip) => {
+        const updateTrip = await TripModel.findOneAndUpdate(
+          { _id: trip._id },
+          { $set: { userId: "62cdd9197b939d4ee658899e" } },
+          { new: true }
+        );
+      })
+    );
 
     const tripsWithProperties = await attachTripProperties(
       trips,
@@ -870,8 +879,7 @@ const deleteRestoreTrips = async (trips, userId, disabledValue) => {
           },
           { new: true }
         );
-        console.log("updateVehicle", disabled._id);
-        console.log("updateVehicle2", disabled._id.toString());
+
         const updateTyre = await TyreModel.updateMany(
           { trips: disabled._id.toString() },
           { $pull: { trips: disabled._id.toString() } },
