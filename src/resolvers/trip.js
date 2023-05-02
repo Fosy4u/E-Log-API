@@ -392,6 +392,35 @@ const getTripsByVehicleId = async (req, res) => {
     return res.status(500).send({ error: error.message });
   }
 };
+const getTripsByDriverId = async (req, res) => {
+  try {
+    const { organisationId, disabled, driverId } = req.query;
+    if (!organisationId)
+      return res.status(400).send({ error: "organisationId is required" });
+    if (!driverId)
+      return res.status(400).send({ error: "driverId is required" });
+    const trips = await TripModel.find(
+      {
+        organisationId,
+        disabled: disabled || false,
+        driverId,
+      },
+      { remarks: 0, logs: 0, timeline: 0 }
+    ).lean();
+    const tripsWithProperties = await attachTripProperties(
+      trips,
+      organisationId
+    );
+
+    return res.status(200).send({
+      data: tripsWithProperties.sort(function (a, b) {
+        return b.createdAt - a.createdAt;
+      }),
+    });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
 
 const unInvoicedUnpaidTrips = async (req, res) => {
   try {
@@ -553,16 +582,7 @@ const createTrip = async (req, res) => {
     }
     const createTrip = new TripModel({ ...params });
     const newTrip = await createTrip.save();
-    // if (newTrip) {
-    //   const updateVehicle = await TruckModel.findByIdAndUpdate(
-    //     vehicleId,
-    //     {
-    //       status: "on trip",
-    //     },
-    //     { new: true }
-    //   );
-    //   return res.status(200).send({ message: "Trip created", data: newTrip });
-    // }
+ 
     return res.status(200).send({ message: "Trip created", data: newTrip });
   } catch (error) {
     return res.status(500).send({ error: error.message });
@@ -1679,4 +1699,5 @@ module.exports = {
   tripAction,
   getTripByRequestId,
   getTripsByVehicleId,
+  getTripsByDriverId 
 };

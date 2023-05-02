@@ -332,6 +332,11 @@ let routes = (app) => {
     tripResolver.getTripsByVehicleId
   );
   router.get(
+    "/trips/driverId",
+    authMiddleware,
+    tripResolver.getTripsByDriverId 
+  );
+  router.get(
     "/trips/univoiced/unpaid",
     authMiddleware,
     tripResolver.unInvoicedUnpaidTrips
@@ -666,6 +671,11 @@ let routes = (app) => {
     "/report/analyticsByVehicleID/",
     authMiddleware,
     reportResolver.getAnalyticsByVehicleID
+  );
+  router.get(
+    "/report/analyticsByDriverID/",
+    authMiddleware,
+    reportResolver.getAnalyticsByDriverID 
   );
 
   //OrganisationContact

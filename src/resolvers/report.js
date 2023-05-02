@@ -5,6 +5,7 @@ const PaymentModel = require("../models/payment");
 const VendorAgentModel = require("../models/vendorAgent");
 const TruckModel = require("../models/truck");
 const CustomerModel = require("../models/customer");
+const DriverModel = require("../models/driver");
 const TyreModel = require("../models/tyre");
 const OrganisationUserModel = require("../models/organisationUsers");
 const moment = require("moment");
@@ -930,6 +931,180 @@ const getAnalyticsByVehicleID = async (req, res) => {
     return res.status(500).send({ error: error.message });
   }
 };
+const getAnalyticsByDriverID = async (req, res) => {
+  try {
+    const { organisationId, fromDate, toDate, _id } = req.query;
+    if (!organisationId) {
+      return res.status(400).send({ error: "organisationId is required" });
+    }
+    if (!fromDate || !toDate) {
+      return res.status(400).send({ error: "fromDate and toDate is required" });
+    }
+    if (!_id) {
+      return res.status(400).send({ error: "_id is required" });
+    }
+
+    const from = new Date(fromDate);
+    from.setUTCHours(0, 0, 0, 0);
+    const to = new Date(toDate);
+    to.setUTCHours(23, 59, 59, 999);
+    const excludeStatusAdvancePayments = ["Cancelled"];
+
+    const driver = await DriverModel.findOne({
+      _id,
+      organisationId,
+      disabled: false,
+    }).lean();
+    if (!driver) {
+      return res.status(400).send({ error: "driver not found" });
+    }
+
+    const trips = await TripModel.find(
+      {
+        organisationId,
+        status: { $nin: excludeStatusAdvancePayments },
+        disabled: false,
+        pickupDate: {
+          $gte: from,
+          $lte: to,
+        },
+        driverId: _id,
+        disabled: false,
+      },
+      {
+        amount: 1,
+        requestId: 1,
+        waybillNumber: 1,
+        vendorId: 1,
+        customerId: 1,
+        pickupDate: 1,
+        vehicleId: 1,
+        userId: 1,
+        status: 1,
+        estimatedFuelLitres: 1,
+        estimatedFuelCost: 1,
+        actualFuelLitres: 1,
+        actualFuelCost: 1,
+        estimatedDropOffDate: 1,
+        dropOffDate: 1,
+      }
+    ).lean();
+    const tripIds = trips.map((item) => item.requestId);
+
+    to.setUTCHours(23, 59, 59, 999);
+    const expenses = await ExpensesModel.find(
+      {
+        organisationId,
+        disabled: false,
+        tripId: { $in: tripIds },
+        date: {
+          $gte: from,
+          $lte: to,
+        },
+      },
+      {
+        amount: 1,
+        date: 1,
+        expensesId: 1,
+        expenseType: 1,
+        tripId: 1,
+        vehicleId: 1,
+        userId: 1,
+      }
+    ).lean();
+
+    const getResolvedProfitAndLoss = await Promise.resolve(
+      resolveTripProfitAndLoss(trips, expenses)
+    );
+
+
+    const totalRevenue = getResolvedProfitAndLoss.reduce((acc, value) => {
+      if (value.totalRevenue) {
+        return acc + value.totalRevenue;
+      }
+      return acc;
+    }, 0);
+    const totalExpenses = getResolvedProfitAndLoss.reduce((acc, value) => {
+      if (value.totalExpense) {
+        return acc + value.totalExpense;
+      }
+      return acc;
+    }, 0);
+    const totalProfit = totalRevenue - totalExpenses;
+    //rank expenses by expense type in percentage
+    const expensesByType = expenses.reduce((acc, value) => {
+      if (value.expenseType) {
+        const index = acc.findIndex(
+          (item) => item.expenseType === value.expenseType
+        );
+        if (index > -1) {
+          acc[index].amount += value.amount;
+          acc[index].percentage = (acc[index].amount / totalExpenses) * 100;
+        } else {
+          acc.push({
+            expenseType: value.expenseType,
+            amount: value.amount,
+            percentage: (value.amount / totalExpenses) * 100,
+          });
+        }
+      }
+      return acc;
+    }, []);
+
+    const combined = [...trips, ...expenses];
+    await Promise.all(
+      combined.map(async (item) => {
+        if (item.userId) {
+          const user = await OrganisationUserModel.findOne(
+            {
+              _id: item.userId,
+            },
+            {
+              firstName: 1,
+              lastName: 1,
+              email: 1,
+              phone: 1,
+              imageUrl: 1,
+            }
+          ).lean();
+          item.user = user;
+        }
+      })
+    );
+    const data = combined.reduce((acc, value) => {
+      const { pickupDate, date, amount, expensesId, requestId } = value;
+      if (requestId) {
+        acc.push({
+          date: pickupDate,
+          credit: amount,
+          ...value,
+        });
+      }
+      if (expensesId) {
+        acc.push({
+          date: date,
+          debit: amount,
+          ...value,
+        });
+      }
+      return acc;
+    }, []);
+    const fuel = analySeFuel(trips);
+
+    const param = {
+      totalRevenue,
+      totalExpenses,
+      totalProfit,
+      data: data.sort((a, b) => a.date - b.date),
+      tripCount: trips.length,
+      expensesByType,
+      fuel,
+    };
+    res.status(200).send({ data: param });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
 
 const getAllPayments = async (req, res) => {
   try {
@@ -1598,4 +1773,5 @@ module.exports = {
   getMostRecentProfitAndLossByTrip,
   getTopTripProviders,
   getAnalyticsByVehicleID,
+  getAnalyticsByDriverID,
 };
