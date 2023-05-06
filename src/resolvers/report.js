@@ -719,21 +719,26 @@ const analySeFuel = (trips) => {
     });
   const sumFuelLitres = averageEstimatedFuelLitres + actualFuelLitres;
   const sumFuelCost = averageEstimatedFuelCost + actualFuelCost;
+  const diffrenceFuelLitres = averageEstimatedFuelLitres - actualFuelLitres;
+  const differenceFuelCost = averageEstimatedFuelCost - actualFuelCost;
+  const averageFuelLitres = diffrenceFuelLitres / (sumFuelLitres / 2);
+  const averageFuelCost = differenceFuelCost / (sumFuelCost / 2);
+  const differenceFuelLittersPercentage = averageFuelLitres * 100;
+  const differenceFuelCostPercentage = averageFuelCost * 100;
+
   fuel.averageEstimatedFuelLitres = {
     value: averageEstimatedFuelLitres,
-    percentage: (averageEstimatedFuelLitres / sumFuelLitres) * 100,
   };
   fuel.averageEstimatedFuelCost = {
     value: averageEstimatedFuelCost,
-    percentage: (averageEstimatedFuelCost / sumFuelCost) * 100,
   };
   fuel.averageActualFuelLitres = {
     value: actualFuelLitres,
-    percentage: (actualFuelLitres / sumFuelLitres) * 100,
+    differenceFuelLittersPercentage,
   };
   fuel.averageActualFuelCost = {
     value: actualFuelCost,
-    percentage: (actualFuelCost / sumFuelCost) * 100,
+    differenceFuelCostPercentage,
   };
   return fuel;
 };
@@ -1017,7 +1022,6 @@ const getAnalyticsByDriverID = async (req, res) => {
       resolveTripProfitAndLoss(trips, expenses)
     );
 
-
     const totalRevenue = getResolvedProfitAndLoss.reduce((acc, value) => {
       if (value.totalRevenue) {
         return acc + value.totalRevenue;
@@ -1097,6 +1101,159 @@ const getAnalyticsByDriverID = async (req, res) => {
       totalProfit,
       data: data.sort((a, b) => a.date - b.date),
       tripCount: trips.length,
+      expensesByType,
+      fuel,
+    };
+    res.status(200).send({ data: param });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+const getAnalyticsByTripID = async (req, res) => {
+  try {
+    const { organisationId, _id } = req.query;
+    if (!organisationId) {
+      return res.status(400).send({ error: "organisationId is required" });
+    }
+
+    if (!_id) {
+      return res.status(400).send({ error: "_id is required" });
+    }
+
+    const trip = await TripModel.findById(_id, {
+      amount: 1,
+      requestId: 1,
+      waybillNumber: 1,
+      vendorId: 1,
+      customerId: 1,
+      pickupDate: 1,
+      vehicleId: 1,
+      userId: 1,
+      status: 1,
+      estimatedFuelLitres: 1,
+      estimatedFuelCost: 1,
+      actualFuelLitres: 1,
+      actualFuelCost: 1,
+      estimatedDropOffDate: 1,
+      dropOffDate: 1,
+    }).lean();
+
+    if (!trip?.requestId) {
+      return res.status(404).send({ error: "trip not found" });
+    }
+
+    const expenses = await ExpensesModel.find(
+      {
+        organisationId,
+        disabled: false,
+        tripId: trip.requestId,
+      },
+      {
+        amount: 1,
+        date: 1,
+        expensesId: 1,
+        expenseType: 1,
+        tripId: 1,
+        vehicleId: 1,
+        userId: 1,
+      }
+    ).lean();
+
+    const totalRevenue = trip.amount || 0;
+    const totalExpenses = expenses.reduce((acc, value) => {
+      if (value.amount) {
+        return acc + value.amount;
+      }
+      return acc;
+    }, 0);
+    const totalProfit = totalRevenue - totalExpenses;
+    //rank expenses by expense type in percentage
+    const expensesByType = expenses.reduce((acc, value) => {
+      if (value.expenseType) {
+        const index = acc.findIndex(
+          (item) => item.expenseType === value.expenseType
+        );
+        if (index > -1) {
+          acc[index].amount += value.amount;
+          acc[index].percentage = (acc[index].amount / totalExpenses) * 100;
+        } else {
+          acc.push({
+            expenseType: value.expenseType,
+            amount: value.amount,
+            percentage: (value.amount / totalExpenses) * 100,
+          });
+        }
+      }
+      return acc;
+    }, []);
+
+    const combined = [trip, ...expenses];
+    await Promise.all(
+      combined.map(async (item) => {
+        if (item.userId) {
+          const user = await OrganisationUserModel.findOne(
+            {
+              _id: item.userId,
+            },
+            {
+              firstName: 1,
+              lastName: 1,
+              email: 1,
+              phone: 1,
+              imageUrl: 1,
+            }
+          ).lean();
+          item.user = user;
+        }
+      })
+    );
+    const data = combined.reduce((acc, value) => {
+      const { pickupDate, date, amount, expensesId, requestId } = value;
+      if (requestId) {
+        acc.push({
+          date: pickupDate,
+          credit: amount,
+          ...value,
+        });
+      }
+      if (expensesId) {
+        acc.push({
+          date: date,
+          debit: amount,
+          ...value,
+        });
+      }
+      return acc;
+    }, []);
+    const fuel = {};
+    if (trip.estimatedFuelLitres) {
+      fuel.estimatedFuelLitres = trip.estimatedFuelLitres;
+    }
+    if (trip.estimatedFuelCost) {
+      fuel.estimatedFuelCost = trip.estimatedFuelCost;
+    }
+    if (trip.actualFuelLitres) {
+      fuel.actualFuelLitres = trip.actualFuelLitres;
+    }
+    if (trip.actualFuelCost) {
+      fuel.actualFuelCost = trip.actualFuelCost;
+    }
+    const sumFuelLitres = fuel.estimatedFuelLitres + fuel.actualFuelLitres;
+    const sumFuelCost = fuel.estimatedFuelCost + fuel.actualFuelCost;
+    const diffrenceFuelLitres =
+      fuel.estimatedFuelLitres - fuel.actualFuelLitres;
+    const diffrenceFuelCost = fuel.estimatedFuelCost - fuel.actualFuelCost;
+    const averageFuelLitres = diffrenceFuelLitres / (sumFuelLitres / 2);
+    const averageFuelCost = diffrenceFuelCost / (sumFuelCost / 2);
+
+    fuel.differenceFuelLittersPercentage = averageFuelLitres * 100;
+    fuel.differenceFuelCostPercentage = averageFuelCost * 100;
+
+    const param = {
+      totalRevenue,
+      totalExpenses,
+      totalProfit,
+      data: data.sort((a, b) => a.date - b.date),
       expensesByType,
       fuel,
     };
@@ -1774,4 +1931,5 @@ module.exports = {
   getTopTripProviders,
   getAnalyticsByVehicleID,
   getAnalyticsByDriverID,
+  getAnalyticsByTripID,
 };

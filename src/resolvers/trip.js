@@ -759,6 +759,7 @@ const updateTrip = async (req, res) => {
         req.body.estimatedDropOffDate
       ).toISOString();
     }
+    console.log("params", params)
 
     const updateTrip = await TripModel.findByIdAndUpdate(
       _id,

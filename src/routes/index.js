@@ -334,7 +334,7 @@ let routes = (app) => {
   router.get(
     "/trips/driverId",
     authMiddleware,
-    tripResolver.getTripsByDriverId 
+    tripResolver.getTripsByDriverId
   );
   router.get(
     "/trips/univoiced/unpaid",
@@ -511,6 +511,12 @@ let routes = (app) => {
 
     invoiceResolver.updateInvoice
   );
+  router.put(
+    "/invoice/markAsSent",
+    authMiddleware,
+
+    invoiceResolver.markInvoiceAsSent
+  );
   router.put("/invoice/delete", authMiddleware, invoiceResolver.deleteInvoices);
 
   router.put(
@@ -675,7 +681,12 @@ let routes = (app) => {
   router.get(
     "/report/analyticsByDriverID/",
     authMiddleware,
-    reportResolver.getAnalyticsByDriverID 
+    reportResolver.getAnalyticsByDriverID
+  );
+  router.get(
+    "/report/analyticsByTripID/",
+    authMiddleware,
+    reportResolver.getAnalyticsByTripID
   );
 
   //OrganisationContact

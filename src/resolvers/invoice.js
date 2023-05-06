@@ -156,7 +156,6 @@ const createInvoice = async (req, res) => {
       logs: [log],
       remark: formattedRemark,
       requestIds,
-      
     };
     if (req.body?.date) {
       params.date = moment(req.body.date).toISOString();
@@ -259,6 +258,16 @@ const formatInvoice = async (invoice) => {
       getInvoicePaidAndAmountDue(request, invoice?.invoiceId)
     );
     const { amountDue, paid } = calc;
+    let status = "Draft";
+    if (invoice?.sentToCustomer) {
+      status = "Sent";
+    }
+    if (paid > 0 && amountDue === 0) {
+      status = "Paid";
+    }
+    if (paid > 0 && amountDue > 0) {
+      status = "Partially Paid";
+    }
 
     const invObj = {
       vendor: {
@@ -270,7 +279,7 @@ const formatInvoice = async (invoice) => {
         name: getName(customerDetail),
         ...customerDetail,
       },
-
+      status,
       trip: {
         ...tripDetail,
         amountDue,
@@ -300,6 +309,7 @@ const formatInvoice = async (invoice) => {
     vendor: collection[0]?.vendor,
     tripsDetails: collection,
     isVendorRequested,
+    status: collection[0]?.status,
     sentTo: collection[0]?.vendor?._id
       ? collection[0]?.vendor
       : collection[0]?.customer,
@@ -737,6 +747,7 @@ const getInvoiceLogs = async (req, res) => {
 const addInvoiceRemark = async (req, res) => {
   try {
     const { _id, remarkObj } = req.body;
+    console.log("here", _id, remarkObj);
 
     const { remark, userId } = remarkObj;
 
@@ -759,12 +770,13 @@ const addInvoiceRemark = async (req, res) => {
       },
       { new: true }
     );
+    console.log("here", updateRemark);
     const log = {
       date: new Date(),
       userId,
       action: "remark",
       reason: "added remark",
-      details: `added remark on invoice - ${invoice.requestId}`,
+      details: `added remark on invoice - ${invoice.invoiceId}`,
     };
     const updateInvoice = await InvoiceModel.findByIdAndUpdate(
       { _id },
@@ -854,16 +866,15 @@ const editInvoiceRemark = async (req, res) => {
     const updateRemark = await InvoiceModel.updateOne(
       {
         _id: invoiceId,
-        remarks: { $elemMatch: { _id: remarkId } },
+        "remarks._id": remarkId,
       },
 
       {
-        $set: {
-          "remarks.$.remark": remark,
-        },
+        $set: { "remarks.$.remark": remark },
       },
       { new: true }
     );
+
     const log = {
       date: new Date(),
       userId,
@@ -887,6 +898,7 @@ const getInvoiceRemarks = async (req, res) => {
   try {
     const { _id } = req.query;
     if (!_id) return res.status(400).send({ error: "invoice _id is required" });
+    console.log("here", _id);
     const invoices = await InvoiceModel.aggregate([
       {
         $match: {
@@ -963,6 +975,36 @@ const getInvoiceRemarks = async (req, res) => {
     return res.status(500).send({ error: error.message });
   }
 };
+const markInvoiceAsSent = async (req, res) => {
+  try {
+    console.log(req.body);
+    const { _id, userId } = req.body;
+    if (!_id) return res.status(400).send({ error: "invoice _id is required" });
+    if (!userId) return res.status(400).send({ error: "userId is required" });
+    const log = {
+      date: new Date(),
+      userId: userId,
+      action: "stamp",
+      details: `Invoice - marked as sent`,
+      reason: `Invoice sent to recipient`,
+    };
+
+    const mark = await InvoiceModel.findByIdAndUpdate(
+      _id,
+      {
+        sentToCustomer: true,
+        $push: { logs: log },
+      },
+      { new: true }
+    );
+    if (!mark) return res.status(400).send({ error: "Invoice not found" });
+    return res
+      .status(200)
+      .send({ message: "Invoice marked as sent successfully", data: mark });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
 
 module.exports = {
   addInvoiceRemark,
@@ -977,4 +1019,5 @@ module.exports = {
   deleteInvoices,
   getInvoiceLogs,
   getUnpaidInvoices,
+  markInvoiceAsSent,
 };

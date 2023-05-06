@@ -15,16 +15,16 @@ const InvoiceSchema = new mongoose.Schema({
         waybillNumber: String,
         amount: Number,
         quantity: Number,
-        destination: String
-      
+        destination: String,
       },
     ],
   },
   amount: { type: Number, required: true },
-  remark: {
+  remarks: {
     type: { userId: String, remark: String, date: String },
     required: false,
   },
+  sentToCustomer: { type: Boolean, default: false },
   logs: [
     {
       date: Date,

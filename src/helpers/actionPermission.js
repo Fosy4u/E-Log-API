@@ -234,13 +234,13 @@ const canDeleteOrEditOrganisationInvoiceRemark = async (param) => {
   const invoice = await InvoiceModel.findOne({
     _id: invoiceId,
     disabled: false,
-  });
+  }).lean();
 
   if (invoice?.remarks?.length > 0) {
     const remark = invoice.remarks.find(
       (remark) => remark._id.toString() === remarkId
     );
-    console.log(remark);
+
     if (remark) {
       canPerformAction = remark.userId.toString() === userId;
     }
