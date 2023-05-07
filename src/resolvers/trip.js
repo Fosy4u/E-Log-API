@@ -279,6 +279,31 @@ const attachTripProperties = async (trips, organisationId) => {
   });
   return Promise.all(properties);
 };
+const getInvoicePaidAndAmountDue = async (request, invoiceId) => {
+  const requestId = request?.requestId;
+
+  let paid = 0;
+  let amountDue = request?.amount;
+  const paidInvoices = await PaymentModel.find({
+    invoiceId,
+    disabled: false,
+    "requestIds.requestId": requestId,
+  }).lean();
+  const flatPaidInvoicesReuestIds = paidInvoices.flatMap((invoice) => {
+    return invoice?.requestIds;
+  });
+  if (flatPaidInvoicesReuestIds.length > 0) {
+    const paidInvoicesRequestIds = flatPaidInvoicesReuestIds.filter(
+      (request) => request?.requestId === requestId
+    );
+    paid = paidInvoicesRequestIds.reduce((acc, request) => {
+      return acc + request?.amount;
+    }, 0);
+    amountDue = amountDue - paid;
+  }
+
+  return { paid, amountDue };
+};
 
 const getTrip = async (req, res) => {
   try {
@@ -293,16 +318,45 @@ const getTrip = async (req, res) => {
       organisationId
     );
     let isInvoiced = false;
+    let invoice = {};
     const invoiced = await InvoiceModel.findOne({
       organisationId,
       disabled: false,
       "requestIds.requestId": trip?.requestId,
     }).lean();
-    if (invoiced) isInvoiced = true;
+    if (invoiced) {
+      isInvoiced = true;
+      const request = invoiced.requestIds.find(
+        (request) => request.requestId === trip?.requestId
+      );
 
-    return res
-      .status(200)
-      .send({ data: { ...tripsWithProperties[0], isInvoiced } });
+      const calc = await Promise.resolve(
+        getInvoicePaidAndAmountDue(request, invoiced?.invoiceId)
+      );
+      const { amountDue, paid } = calc;
+      let status = "Draft";
+      if (invoiced?.sentToCustomer) {
+        status = "Sent";
+      }
+      if (paid > 0 && amountDue === 0) {
+        status = "Paid";
+      }
+      if (paid > 0 && amountDue > 0) {
+        status = "Partially Paid";
+      }
+      invoice.invoiceId = invoiced?.invoiceId;
+      invoice.status = status;
+      invoice.amountDue = amountDue;
+      invoice.paid = paid;
+    }
+
+    return res.status(200).send({
+      data: {
+        ...tripsWithProperties[0],
+        isInvoiced,
+        invoice,
+      },
+    });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -582,7 +636,7 @@ const createTrip = async (req, res) => {
     }
     const createTrip = new TripModel({ ...params });
     const newTrip = await createTrip.save();
- 
+
     return res.status(200).send({ message: "Trip created", data: newTrip });
   } catch (error) {
     return res.status(500).send({ error: error.message });
@@ -759,7 +813,7 @@ const updateTrip = async (req, res) => {
         req.body.estimatedDropOffDate
       ).toISOString();
     }
-    console.log("params", params)
+    console.log("params", params);
 
     const updateTrip = await TripModel.findByIdAndUpdate(
       _id,
@@ -1700,5 +1754,5 @@ module.exports = {
   tripAction,
   getTripByRequestId,
   getTripsByVehicleId,
-  getTripsByDriverId 
+  getTripsByDriverId,
 };
