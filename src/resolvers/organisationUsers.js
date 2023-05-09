@@ -85,7 +85,14 @@ const createOrganisationUsers = async (req, res) => {
 const getOrganisationUser = async (req, res) => {
   try {
     const { userId } = req.query;
+    if (!userId) {
+      return res.status(400).send({ error: "userId is required" });
+    }
+
+    const users = await OrganisationUserModel.find({}).lean();
+
     const user = await OrganisationUserModel.findOne({ userId });
+
     return res.status(200).send({ data: user });
   } catch (error) {
     return res.status(500).send({ error: error.message });
