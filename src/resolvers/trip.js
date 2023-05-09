@@ -9,6 +9,7 @@ const InvoiceModel = require("../models/invoice");
 const DriverModel = require("../models/driver");
 const PaymentModel = require("../models/payment");
 const TyreModel = require("../models/tyre");
+const ExpensesModel = require("../models/expenses");
 const moment = require("moment");
 const {
   deleteLocalFile,
@@ -213,7 +214,7 @@ const attachTripProperties = async (trips, organisationId) => {
     {
       _id: { $in: vehicleIds },
     },
-    { assignedPartnerId: 1, regNo: 1 }
+    { assignedPartnerId: 1, regNo: 1, imageUrl: 1 }
   ).lean();
   const attachPartners = await attachPartnerToVehicle(vehicles, organisationId);
   const vehicleMap = {};
@@ -259,6 +260,7 @@ const attachTripProperties = async (trips, organisationId) => {
         firstName: 1,
         lastName: 1,
         phoneNo: 1,
+        imageUrl: 1,
       }
     ).lean();
     return {
@@ -268,10 +270,39 @@ const attachTripProperties = async (trips, organisationId) => {
       paid: paidAndAmountDue.paid,
       amountDue: paidAndAmountDue.amountDue,
       requester,
-      driver: { name: getName(driver), phoneNo: driver?.phoneNo },
+      driver: {
+        name: getName(driver),
+        phoneNo: driver?.phoneNo,
+        imageUrl: driver?.imageUrl,
+      },
     };
   });
   return Promise.all(properties);
+};
+const getInvoicePaidAndAmountDue = async (request, invoiceId) => {
+  const requestId = request?.requestId;
+
+  let paid = 0;
+  let amountDue = request?.amount;
+  const paidInvoices = await PaymentModel.find({
+    invoiceId,
+    disabled: false,
+    "requestIds.requestId": requestId,
+  }).lean();
+  const flatPaidInvoicesReuestIds = paidInvoices.flatMap((invoice) => {
+    return invoice?.requestIds;
+  });
+  if (flatPaidInvoicesReuestIds.length > 0) {
+    const paidInvoicesRequestIds = flatPaidInvoicesReuestIds.filter(
+      (request) => request?.requestId === requestId
+    );
+    paid = paidInvoicesRequestIds.reduce((acc, request) => {
+      return acc + request?.amount;
+    }, 0);
+    amountDue = amountDue - paid;
+  }
+
+  return { paid, amountDue };
 };
 
 const getTrip = async (req, res) => {
@@ -287,16 +318,45 @@ const getTrip = async (req, res) => {
       organisationId
     );
     let isInvoiced = false;
+    let invoice = {};
     const invoiced = await InvoiceModel.findOne({
       organisationId,
       disabled: false,
       "requestIds.requestId": trip?.requestId,
     }).lean();
-    if (invoiced) isInvoiced = true;
+    if (invoiced) {
+      isInvoiced = true;
+      const request = invoiced.requestIds.find(
+        (request) => request.requestId === trip?.requestId
+      );
 
-    return res
-      .status(200)
-      .send({ data: { ...tripsWithProperties[0], isInvoiced } });
+      const calc = await Promise.resolve(
+        getInvoicePaidAndAmountDue(request, invoiced?.invoiceId)
+      );
+      const { amountDue, paid } = calc;
+      let status = "Draft";
+      if (invoiced?.sentToCustomer) {
+        status = "Sent";
+      }
+      if (paid > 0 && amountDue === 0) {
+        status = "Paid";
+      }
+      if (paid > 0 && amountDue > 0) {
+        status = "Partially Paid";
+      }
+      invoice.invoiceId = invoiced?.invoiceId;
+      invoice.status = status;
+      invoice.amountDue = amountDue;
+      invoice.paid = paid;
+    }
+
+    return res.status(200).send({
+      data: {
+        ...tripsWithProperties[0],
+        isInvoiced,
+        invoice,
+      },
+    });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -333,6 +393,15 @@ const getTrips = async (req, res) => {
       },
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
+    await Promise.all(
+      trips.map(async (trip) => {
+        const updateTrip = await TripModel.findOneAndUpdate(
+          { _id: trip._id },
+          { $set: { userId: "62cdd9197b939d4ee658899e" } },
+          { new: true }
+        );
+      })
+    );
 
     const tripsWithProperties = await attachTripProperties(
       trips,
@@ -360,6 +429,35 @@ const getTripsByVehicleId = async (req, res) => {
         organisationId,
         disabled: disabled || false,
         vehicleId,
+      },
+      { remarks: 0, logs: 0, timeline: 0 }
+    ).lean();
+    const tripsWithProperties = await attachTripProperties(
+      trips,
+      organisationId
+    );
+
+    return res.status(200).send({
+      data: tripsWithProperties.sort(function (a, b) {
+        return b.createdAt - a.createdAt;
+      }),
+    });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+const getTripsByDriverId = async (req, res) => {
+  try {
+    const { organisationId, disabled, driverId } = req.query;
+    if (!organisationId)
+      return res.status(400).send({ error: "organisationId is required" });
+    if (!driverId)
+      return res.status(400).send({ error: "driverId is required" });
+    const trips = await TripModel.find(
+      {
+        organisationId,
+        disabled: disabled || false,
+        driverId,
       },
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
@@ -538,16 +636,7 @@ const createTrip = async (req, res) => {
     }
     const createTrip = new TripModel({ ...params });
     const newTrip = await createTrip.save();
-    // if (newTrip) {
-    //   const updateVehicle = await TruckModel.findByIdAndUpdate(
-    //     vehicleId,
-    //     {
-    //       status: "on trip",
-    //     },
-    //     { new: true }
-    //   );
-    //   return res.status(200).send({ message: "Trip created", data: newTrip });
-    // }
+
     return res.status(200).send({ message: "Trip created", data: newTrip });
   } catch (error) {
     return res.status(500).send({ error: error.message });
@@ -724,6 +813,7 @@ const updateTrip = async (req, res) => {
         req.body.estimatedDropOffDate
       ).toISOString();
     }
+    console.log("params", params);
 
     const updateTrip = await TripModel.findByIdAndUpdate(
       _id,
@@ -757,20 +847,62 @@ const updateTrip = async (req, res) => {
   }
 };
 
-const validateTrips = async (ids) => {
-  const invalidTrip = await ids.reduce(async (acc, _id) => {
-    let invalid = await acc;
-
-    const found = await TripModel.findById(_id).lean();
-
-    if (!found) {
-      invalid.push(_id);
+const validateTrips = async (ids, disabled) => {
+  let reason = "";
+  let valid = true;
+  for (const id of ids) {
+    const trip = await TripModel.findOne({
+      _id: id,
+      disabled: disabled || false,
+    }).lean();
+    if (!trip) {
+      valid = false;
+      reason =
+        ids.length > 1
+          ? "One of the selected trips is not found"
+          : "Trip not found";
+      break;
     }
-
-    return invalid;
-  }, []);
-
-  return invalidTrip;
+    if (!disabled) {
+      const expenses = await ExpensesModel.find({
+        tripId: trip.requestId,
+        disabled: false,
+      }).lean();
+      if (expenses.length > 0) {
+        valid = false;
+        reason =
+          ids.length > 1
+            ? "One of the selected trips has recorded expenses. You need to first delete or disassociate the expenses from the trip"
+            : "Trip has recorded expenses. You need to first delete or disassociate the expenses from the trip";
+        break;
+      }
+      const invoice = await InvoiceModel.findOne({
+        disabled: false,
+        "requestIds.requestId": trip?.requestId,
+      }).lean();
+      if (invoice) {
+        valid = false;
+        reason =
+          ids.length > 1
+            ? "One of the selected trips has an invoice. You need to first delete or disassociate the invoice from the trip"
+            : "Trip has an invoice. You need to first delete or disassociate the invoice from the trip";
+        break;
+      }
+      const payment = await PaymentModel.findOne({
+        "requestIds.requestId": trip.requestId,
+        disabled: false,
+      });
+      if (payment) {
+        valid = false;
+        reason =
+          ids.length > 1
+            ? "One of the selected trips has recorded payments. You need to first delete or disassociate the payments from the trip"
+            : "Trip has recorded payments. You need to first delete or disassociate the payments from the trip";
+        break;
+      }
+    }
+  }
+  return { valid, reason };
 };
 
 const deleteRestoreTrips = async (trips, userId, disabledValue) => {
@@ -822,6 +954,12 @@ const deleteRestoreTrips = async (trips, userId, disabledValue) => {
           },
           { new: true }
         );
+
+        const updateTyre = await TyreModel.updateMany(
+          { trips: disabled._id.toString() },
+          { $pull: { trips: disabled._id.toString() } },
+          { new: true }
+        );
       }
       result.push(_id);
     }
@@ -835,13 +973,10 @@ const deleteTrips = async (req, res) => {
     const { ids, userId } = req.body;
     if (!ids || ids.length === 0)
       return res.status(400).send({ error: "no trip id provided" });
-    const invalidTrips = await validateTrips(ids);
-    if (invalidTrips.length > 0) {
-      return res.status(400).send({
-        error: `request failed as the following trips(s)  ${
-          invalidTrips.length > 1 ? " do" : " does"
-        } not exist. Please contact NemFraTech support if this error persist unexpectedly : [${invalidTrips}]`,
-      });
+    const invalidTrips = await Promise.resolve(validateTrips(ids));
+    const { valid, reason } = invalidTrips;
+    if (!valid) {
+      return res.status(400).send({ error: reason });
     }
     const disabledValue = true;
     const disabledTrips = await deleteRestoreTrips(ids, userId, disabledValue);
@@ -858,16 +993,15 @@ const deleteTrips = async (req, res) => {
 const restoreTrips = async (req, res) => {
   try {
     const { ids, userId } = req.body;
-    const invalidTrips = await validateTrips(ids);
-    if (invalidTrips.length > 0) {
-      return res.status(400).send({
-        error: `request failed as the following trips(s)  ${
-          invalidTrips.length > 1 ? " do" : " does"
-        } not exist. Please contact NemFraTech support if this error persist unexpectedly : [${invalidTrips}]`,
-      });
+    const invalidTrips = await Promise.resolve(validateTrips(ids, true));
+    const { valid, reason } = invalidTrips;
+    if (!valid) {
+      return res.status(400).send({ error: reason });
     }
     const disabledValue = false;
-    const restoredTrips = await deleteRestoreTrips(ids, userId, disabledValue);
+    const restoredTrips = await Promise.resolve(
+      deleteRestoreTrips(ids, userId, disabledValue)
+    );
     if (restoredTrips.length > 0) {
       return res.status(200).send({
         message: "trip deleted successfully",
@@ -1324,10 +1458,11 @@ const tripAction = async (req, res) => {
           .status(400)
           .send({ error: "vehicle is not available or not found" });
       }
-      if(!availableVehicle?.assignedDriverId){
-        return res
-        .status(400)
-        .send({ error: "vehicle is not assigned to any driver. You can only assign a vehicle that is currently assigned to a driver" });
+      if (!availableVehicle?.assignedDriverId) {
+        return res.status(400).send({
+          error:
+            "vehicle is not assigned to any driver. You can only assign a vehicle that is currently assigned to a driver",
+        });
       }
 
       log = {
@@ -1367,7 +1502,12 @@ const tripAction = async (req, res) => {
           .status(400)
           .send({ error: "error in updating truck status" });
       const tyres = await TyreModel.updateMany(
-        { vehicleId, status: "Active", disabled: false },
+        {
+          vehicleId,
+          status: "Active",
+          disabled: false,
+          trips: { $ne: tripId },
+        },
         { $push: { trips: tripId } }
       );
 
@@ -1508,6 +1648,29 @@ const tripAction = async (req, res) => {
       );
       if (!cancelReason)
         return res.status(400).send({ error: "cancel reason is required" });
+      let reason = "";
+      const expenses = await ExpensesModel.find({
+        tripId: trip.requestId,
+        disabled: false,
+      }).lean();
+      if (expenses.length > 0) {
+        reason =
+          ids.length > 1
+            ? "One of the selected trips has recorded expenses. You need to first delete or disassociate the expenses from the trip"
+            : "Trip has recorded expenses. You need to first delete or disassociate the expenses from the trip";
+        return res.status(400).send({ error: reason });
+      }
+      const payment = await PaymentModel.findOne({
+        "requestIds.requestId": trip.requestId,
+        disabled: false,
+      });
+      if (payment) {
+        reason =
+          ids.length > 1
+            ? "One of the selected trips has recorded payments. You need to first delete or disassociate the payments from the trip"
+            : "Trip has recorded payments. You need to first delete or disassociate the payments from the trip";
+        return res.status(400).send({ error: reason });
+      }
       log = {
         date: new Date(),
         userId,
@@ -1527,6 +1690,7 @@ const tripAction = async (req, res) => {
         {
           $set: { status: "Cancelled" },
           timeline,
+          cancelReason,
           $push: { logs: log },
           $unset: { vehicleId: 1, driverId: 1 },
         },
@@ -1590,4 +1754,5 @@ module.exports = {
   tripAction,
   getTripByRequestId,
   getTripsByVehicleId,
+  getTripsByDriverId,
 };

@@ -5,7 +5,7 @@ const timestamp = require("mongoose-timestamp");
 const InvoiceSchema = new mongoose.Schema({
   organisationId: { type: String, required: true },
   invoiceId: { type: String, required: true },
-  vendorId: { type: String, required: true },
+  vendorId: { type: String },
   disabled: { type: Boolean, default: false },
   date: { type: Date, required: true },
   requestIds: {
@@ -15,16 +15,16 @@ const InvoiceSchema = new mongoose.Schema({
         waybillNumber: String,
         amount: Number,
         quantity: Number,
-        destination: String
-      
+        destination: String,
       },
     ],
   },
   amount: { type: Number, required: true },
-  remark: {
+  remarks: {
     type: { userId: String, remark: String, date: String },
     required: false,
   },
+  sentToCustomer: { type: Boolean, default: false },
   logs: [
     {
       date: Date,

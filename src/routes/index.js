@@ -104,6 +104,20 @@ let routes = (app) => {
   router.put("/truck/edit", authMiddleware, upload, truckResolver.editTruck);
   router.put("/truck/delete", authMiddleware, truckResolver.deleteTruck);
   router.put("/truck/restore", authMiddleware, truckResolver.restoreTruck);
+  router.get("/truck/remarks", authMiddleware, truckResolver.getTruckRemarks);
+
+  router.put("/truck/addRemark", authMiddleware, truckResolver.addTruckRemark);
+  router.put(
+    "/truck/deleteRemark",
+    authMiddleware,
+    truckResolver.deleteTruckRemark
+  );
+  router.put(
+    "/truck/editRemark",
+    authMiddleware,
+    truckResolver.editTruckRemark
+  );
+
   router.put(
     "/truck/assignTruckDriver",
     authMiddleware,
@@ -318,6 +332,11 @@ let routes = (app) => {
     tripResolver.getTripsByVehicleId
   );
   router.get(
+    "/trips/driverId",
+    authMiddleware,
+    tripResolver.getTripsByDriverId
+  );
+  router.get(
     "/trips/univoiced/unpaid",
     authMiddleware,
     tripResolver.unInvoicedUnpaidTrips
@@ -492,6 +511,12 @@ let routes = (app) => {
 
     invoiceResolver.updateInvoice
   );
+  router.put(
+    "/invoice/markAsSent",
+    authMiddleware,
+
+    invoiceResolver.markInvoiceAsSent
+  );
   router.put("/invoice/delete", authMiddleware, invoiceResolver.deleteInvoices);
 
   router.put(
@@ -647,6 +672,21 @@ let routes = (app) => {
     "/report/tripsByTripProviders/",
     authMiddleware,
     reportResolver.getTopTripProviders
+  );
+  router.get(
+    "/report/analyticsByVehicleID/",
+    authMiddleware,
+    reportResolver.getAnalyticsByVehicleID
+  );
+  router.get(
+    "/report/analyticsByDriverID/",
+    authMiddleware,
+    reportResolver.getAnalyticsByDriverID
+  );
+  router.get(
+    "/report/analyticsByTripID/",
+    authMiddleware,
+    reportResolver.getAnalyticsByTripID
   );
 
   //OrganisationContact

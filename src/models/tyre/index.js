@@ -13,7 +13,7 @@ const Tyre = new mongoose.Schema({
   brand: { type: String },
   size: { type: String },
   status: { type: String, required: true, default: "Active" },
-  trips:{type: Array, default: []},
+  trips:{type: Array, default: [String]},
   remarks: {
     type: [{ userId: String, remark: String, date: String }],
     required: false,

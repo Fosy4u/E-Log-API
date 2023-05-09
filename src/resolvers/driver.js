@@ -46,10 +46,11 @@ const deleteImageFromFirebase = async (name) => {
       .then(() => {
         console.log("del is", name);
         return true;
-      }).catch((err) => {
+      })
+      .catch((err) => {
         console.log("err is", err);
         return false;
-      });;
+      });
   }
 };
 
@@ -546,11 +547,11 @@ const uploadDriverDoc = async (req, res) => {
       return res.status(400).send({ error: "no file uploaded" });
     }
 
-    const { _id } = req.body;
-    if (!_id) {
+    const { driverId } = req.body;
+    if (!driverId) {
       return res.status(400).send({ error: "no driver id provided" });
     }
-    const driver = await DriverModel.findById(_id);
+    const driver = await DriverModel.findById({ _id: driverId });
     if (!driver) {
       return res.status(400).send({ error: "driver does not exist" });
     }
@@ -558,7 +559,7 @@ const uploadDriverDoc = async (req, res) => {
     const imageUrl = await addImage(req, filename);
 
     const update = await DriverModel.findByIdAndUpdate(
-      { _id },
+      { _id: driverId },
       { driversLicense: imageUrl },
       { new: true }
     );

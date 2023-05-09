@@ -2,6 +2,7 @@ const PaymentModel = require("../models/payment");
 const VendorAgentModel = require("../models/vendorAgent");
 const TruckModel = require("../models/truck");
 const TripModel = require("../models/trip");
+const InvoiceModel = require("../models/invoice");
 const mongoose = require("mongoose");
 const moment = require("moment");
 const {
@@ -69,7 +70,15 @@ const validateAmount = async (request) => {
 };
 
 const createPayment = async (req, res) => {
-  const { organisationId, amount, date, userId, remark, requestIds } = req.body;
+  const {
+    organisationId,
+    amount,
+    date,
+    userId,
+    remark,
+    requestIds,
+    invoiceId,
+  } = req.body;
 
   try {
     if (!organisationId) {
@@ -155,13 +164,16 @@ const createPayment = async (req, res) => {
       });
     }
     let params;
+    let invoice;
+    if (invoiceId) {
+      invoice = await InvoiceModel.findOne({ invoiceId }).lean();
+    }
 
     params = {
       ...req.body,
       paymentId,
       vendorId,
       isTrip: requestIds?.length > 0 && !invalidRequestIds,
-
       logs: [log],
       remarks,
     };
@@ -175,6 +187,7 @@ const createPayment = async (req, res) => {
     const savePayment = await newPayment.save();
     if (!savePayment)
       return res.status(401).json({ error: "Internal in saving payment" });
+
     if (requestIds?.length > 0 && !invalidRequestIds) {
       await Promise.all(
         requestIds.map(async (request) => {
@@ -196,6 +209,20 @@ const createPayment = async (req, res) => {
         })
       );
     }
+    const invoiceLog = {
+      date: new Date(),
+      userId: userId,
+      action: "stamp",
+      details: `Invoice - marked as sent`,
+      reason: `Invoice sent to recipient`,
+    };
+    if (invoiceId && invoice && !invoice?.sentToCustomer) {
+      await InvoiceModel.findOneAndUpdate(
+        { invoiceId },
+        { sentToCustomer: true, $push: { logs: invoiceLog } }
+      );
+    }
+
     return res
       .status(200)
       .send({ message: "Payment created successfully", data: savePayment });

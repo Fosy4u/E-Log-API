@@ -7,6 +7,7 @@ const ExpensesModel = require("../models/expenses");
 const PaymentModel = require("../models/payment");
 const InvoiceModel = require("../models/invoice");
 const TyreModel = require("../models/tyre");
+const TruckModel = require("../models/truck");
 
 const canDeleteOrEditOrganisationPartnerRemark = async (param) => {
   const { partnerId, remarkId, userId } = param;
@@ -233,13 +234,33 @@ const canDeleteOrEditOrganisationInvoiceRemark = async (param) => {
   const invoice = await InvoiceModel.findOne({
     _id: invoiceId,
     disabled: false,
-  });
+  }).lean();
 
   if (invoice?.remarks?.length > 0) {
     const remark = invoice.remarks.find(
       (remark) => remark._id.toString() === remarkId
     );
-    console.log(remark);
+
+    if (remark) {
+      canPerformAction = remark.userId.toString() === userId;
+    }
+  }
+  return canPerformAction;
+};
+const canDeleteOrEditOrganisationTruckRemark = async (param) => {
+  const { truckId, remarkId, userId } = param;
+
+  let canPerformAction = false;
+  const truck = await TruckModel.findOne({
+    _id: truckId,
+    disabled: false,
+  });
+
+  if (truck?.remarks?.length > 0) {
+    const remark = truck.remarks.find(
+      (remark) => remark._id.toString() === remarkId
+    );
+
     if (remark) {
       canPerformAction = remark.userId.toString() === userId;
     }
@@ -291,4 +312,5 @@ module.exports = {
   canDeleteOrEditOrganisationTyreRemark,
   canEditOrganisationTyre,
   canCreateOrganisationTyre,
+  canDeleteOrEditOrganisationTruckRemark,
 };

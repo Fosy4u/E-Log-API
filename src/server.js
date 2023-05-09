@@ -1,7 +1,7 @@
 
 const cors = require("cors");
 require('dotenv').config()
-
+const {ENV} = require('./config')
 const express = require("express");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
@@ -37,7 +37,7 @@ const start = async () => {
       useUnifiedTopology: true,
       serverApi: ServerApiVersion.v1,
     });
-    console.log("connected");
+    console.log("connected", ENV);
     initRoutes(app);
     app.listen(process.env.PORT || 8080, () => {
       console.log("Server is running...");

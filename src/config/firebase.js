@@ -1,14 +1,15 @@
-
-
-
-const firebaseAdmin = require('firebase-admin');
- const config = require('../config/firebaseServiceAcc')
-
-
+require('dotenv').config()
+const { ENV } = require("../config");
+const firebaseAdmin = require("firebase-admin");
+const config = require("../config/firebaseServiceAcc");
 
 const firebase = firebaseAdmin.initializeApp({
-    credential: firebaseAdmin.credential.cert(config),
+  credential: firebaseAdmin.credential.cert(config),
 });
-const storageRef = firebase.storage().bucket(`${process.env.FIRBASE_STORAGE_BUCKET}`);
-module.exports={storageRef, firebase}
 
+const bucket =
+  ENV === "prod"
+    ? process.env.STORAGE_BUCKET_PROD
+    : process.env.STORAGE_BUCKET_DEV;
+const storageRef = firebase.storage().bucket(`${bucket}`);
+module.exports = { storageRef, firebase };

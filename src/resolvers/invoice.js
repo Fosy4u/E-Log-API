@@ -53,8 +53,8 @@ const verifyTrips = async (requestIds) => {
   }).lean();
 
   if (requestIdsMap?.length !== trips.length) return false;
-  const sameVendor = trips.every(
-    (trip) => trip?.vendorId === trips[0]?.vendorId
+  const sameVendor = trips.every((trip) =>
+    trip?.vendorId ? trip?.vendorId === trips[0]?.vendorId : true
   );
   if (!sameVendor) return false;
   return true;
@@ -89,8 +89,6 @@ const createInvoice = async (req, res) => {
     const selectedTrips = await TripModel.find({
       requestId: { $in: requestIdsMap },
     }).lean();
-    if (!vendorId)
-      return res.status(400).json({ error: "Please provide vendor id" });
 
     const amountDueTotal = await Promise.resolve(
       selectedTrips.reduce(async (acc, trip) => {
@@ -100,6 +98,7 @@ const createInvoice = async (req, res) => {
         return collector + amountDue;
       }, 0)
     );
+
     await Promise.resolve(amountDueTotal);
     if (amountDueTotal != Number(amount))
       return res.status(400).json({ error: "Please provide valid amount" });
@@ -111,6 +110,7 @@ const createInvoice = async (req, res) => {
         .json({ error: "Please provide logged in user id" });
     if (!requestIds || requestIds.length === 0)
       return res.status(400).json({ error: "Please provide requestIds" });
+
     const verify = await Promise.resolve(verifyTrips(requestIds));
     if (!verify)
       return res.status(400).json({ error: "Please provide valid trips" });
@@ -236,12 +236,9 @@ const formatInvoice = async (invoice) => {
   );
 
   const customerIds = tripData.map((trip) => trip?.customerId);
-  const customerData = await CustomerModel.find(
-    {
-      customerId: { $in: customerIds },
-    },
-    { companyName: 1, firstName: 1, lastName: 1, customerId: 1 }
-  ).lean();
+  const customerData = await CustomerModel.find({
+    customerId: { $in: customerIds },
+  }).lean();
   const collection = [];
 
   const format = requestIds.map(async (request) => {
@@ -261,6 +258,16 @@ const formatInvoice = async (invoice) => {
       getInvoicePaidAndAmountDue(request, invoice?.invoiceId)
     );
     const { amountDue, paid } = calc;
+    let status = "Draft";
+    if (invoice?.sentToCustomer) {
+      status = "Sent";
+    }
+    if (paid > 0 && amountDue === 0) {
+      status = "Paid";
+    }
+    if (paid > 0 && amountDue > 0) {
+      status = "Partially Paid";
+    }
 
     const invObj = {
       vendor: {
@@ -270,7 +277,9 @@ const formatInvoice = async (invoice) => {
       customer: {
         customerId: customerDetail?._id,
         name: getName(customerDetail),
+        ...customerDetail,
       },
+      status,
       trip: {
         ...tripDetail,
         amountDue,
@@ -292,14 +301,22 @@ const formatInvoice = async (invoice) => {
   const totalPaid = collection.reduce((acc, trip) => {
     return acc + trip.trip.paid;
   }, 0);
-
+  const isVendorRequested = collection[0]?.vendor?._id ? true : false;
   return {
     ...invoice,
     amountDue: totalAmountDue,
     paid: totalPaid,
     vendor: collection[0]?.vendor,
     tripsDetails: collection,
-    requester: getName(collection[0]?.vendor || collection[0]?.customer),
+    isVendorRequested,
+    status: collection[0]?.status,
+    sentTo: collection[0]?.vendor?._id
+      ? collection[0]?.vendor
+      : collection[0]?.customer,
+
+    requester: collection[0]?.vendor?._id
+      ? getName(collection[0]?.vendor)
+      : getName(collection[0]?.customer),
   };
   // return {
   //   ...invoice,
@@ -324,7 +341,6 @@ const getInvoices = async (req, res) => {
       return res
         .status(401)
         .json({ error: "Internal error in getting invoice" });
-
 
     const formattedInvoices = await Promise.all(
       invoice.map(async (inv) => {
@@ -731,6 +747,7 @@ const getInvoiceLogs = async (req, res) => {
 const addInvoiceRemark = async (req, res) => {
   try {
     const { _id, remarkObj } = req.body;
+    console.log("here", _id, remarkObj);
 
     const { remark, userId } = remarkObj;
 
@@ -753,12 +770,13 @@ const addInvoiceRemark = async (req, res) => {
       },
       { new: true }
     );
+    console.log("here", updateRemark);
     const log = {
       date: new Date(),
       userId,
       action: "remark",
       reason: "added remark",
-      details: `added remark on invoice - ${invoice.requestId}`,
+      details: `added remark on invoice - ${invoice.invoiceId}`,
     };
     const updateInvoice = await InvoiceModel.findByIdAndUpdate(
       { _id },
@@ -848,16 +866,15 @@ const editInvoiceRemark = async (req, res) => {
     const updateRemark = await InvoiceModel.updateOne(
       {
         _id: invoiceId,
-        remarks: { $elemMatch: { _id: remarkId } },
+        "remarks._id": remarkId,
       },
 
       {
-        $set: {
-          "remarks.$.remark": remark,
-        },
+        $set: { "remarks.$.remark": remark },
       },
       { new: true }
     );
+
     const log = {
       date: new Date(),
       userId,
@@ -881,6 +898,7 @@ const getInvoiceRemarks = async (req, res) => {
   try {
     const { _id } = req.query;
     if (!_id) return res.status(400).send({ error: "invoice _id is required" });
+    console.log("here", _id);
     const invoices = await InvoiceModel.aggregate([
       {
         $match: {
@@ -957,6 +975,36 @@ const getInvoiceRemarks = async (req, res) => {
     return res.status(500).send({ error: error.message });
   }
 };
+const markInvoiceAsSent = async (req, res) => {
+  try {
+    console.log(req.body);
+    const { _id, userId } = req.body;
+    if (!_id) return res.status(400).send({ error: "invoice _id is required" });
+    if (!userId) return res.status(400).send({ error: "userId is required" });
+    const log = {
+      date: new Date(),
+      userId: userId,
+      action: "stamp",
+      details: `Invoice - marked as sent`,
+      reason: `Invoice sent to recipient`,
+    };
+
+    const mark = await InvoiceModel.findByIdAndUpdate(
+      _id,
+      {
+        sentToCustomer: true,
+        $push: { logs: log },
+      },
+      { new: true }
+    );
+    if (!mark) return res.status(400).send({ error: "Invoice not found" });
+    return res
+      .status(200)
+      .send({ message: "Invoice marked as sent successfully", data: mark });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
 
 module.exports = {
   addInvoiceRemark,
@@ -971,4 +1019,5 @@ module.exports = {
   deleteInvoices,
   getInvoiceLogs,
   getUnpaidInvoices,
+  markInvoiceAsSent,
 };
