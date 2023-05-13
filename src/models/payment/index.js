@@ -18,7 +18,12 @@ const PaymentSchema = new mongoose.Schema({
   },
   isTrip: { type: Boolean, default: false },
   vendorId: { type: String },
+  isVendorRequested: { type: Boolean, required: true },
+  customerId: { type: String },
   amount: { type: Number },
+  description: { type: String },
+  paymentMethod: { type: String, required: true },
+  receiptMessage: { type: String },
   remarks: {
     type: [{ userId: String, remark: String, date: String }],
     required: false,

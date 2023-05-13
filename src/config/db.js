@@ -8,7 +8,6 @@ const {ENV} = require('../config')
 //   imgBucket: "image",
 // };
 const url = ENV === "prod" ? process.env.MONGODB_URI_PROD : process.env.MONGODB_URI_DEV
-console.log(ENV, "url", url)
 const config = {
   url: ENV === "prod" ? process.env.MONGODB_URI_PROD : process.env.MONGODB_URI_DEV,
   database: "Data1",

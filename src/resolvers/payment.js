@@ -3,6 +3,7 @@ const VendorAgentModel = require("../models/vendorAgent");
 const TruckModel = require("../models/truck");
 const TripModel = require("../models/trip");
 const InvoiceModel = require("../models/invoice");
+const CustomerModel = require("../models/customer");
 const mongoose = require("mongoose");
 const moment = require("moment");
 const {
@@ -62,7 +63,6 @@ const validateAmount = async (request) => {
   const trip = await TripModel.findOne({ requestId: requestId });
   const originalAmount = trip?.amount;
   const { paid, amountDue } = await Promise.resolve(getPaidAndAmountDue(trip));
-  console.log("amountDue", amountDue, "amount", amount, "paid", paid);
   if (amountDue === 0) return false;
   if (amountDue < amount) return false;
   if (paid + amount > originalAmount) return false;
@@ -78,6 +78,9 @@ const createPayment = async (req, res) => {
     remark,
     requestIds,
     invoiceId,
+    customerId,
+    description,
+    paymentMethod,
   } = req.body;
 
   try {
@@ -91,6 +94,12 @@ const createPayment = async (req, res) => {
       return res.status(400).json({ error: "Please provide amount" });
 
     if (!date) return res.status(400).json({ error: "Please provide date" });
+    if (!customerId && !requestIds?.length > 0)
+      return res.status(400).json({ error: "Please provide customerId" });
+    if (!description && !requestIds?.length > 0)
+      return res.status(400).json({ error: "Please provide description" });
+    if (!paymentMethod)
+      return res.status(400).json({ error: "Please provide paymentMethod" });
 
     const invalidRequestIds =
       requestIds?.length > 0 &&
@@ -103,7 +112,6 @@ const createPayment = async (req, res) => {
       return res
         .status(400)
         .json({ error: "Please provide  valid requestIds" });
-    console.log("invalidRequestIds", invalidRequestIds);
 
     if (!userId)
       return res
@@ -116,12 +124,19 @@ const createPayment = async (req, res) => {
         error: "you dont have the permission to carry out this request",
       });
     let vendorId;
+    let tripCustomerId;
+    let isVendorRequested = false;
+
     if (requestIds?.length > 0 && !invalidRequestIds) {
-      vendorId = await TripModel.findOne(
+      const vendor = await TripModel.findOne(
         { requestId: requestIds[0].requestId },
-        { vendorId: 1 }
-      ).lean().vendorId;
+        { vendorId: 1, customerId: 1, isVendorRequested: 1 }
+      ).lean();
+      vendorId = vendor?.vendorId;
+      tripCustomerId = vendor?.customerId;
+      isVendorRequested = vendor?.isVendorRequested;
     }
+
     if (requestIds?.length > 0 && !invalidRequestIds) {
       let invalids = 0;
 
@@ -173,6 +188,8 @@ const createPayment = async (req, res) => {
       ...req.body,
       paymentId,
       vendorId,
+      customerId: customerId ? customerId : tripCustomerId,
+      isVendorRequested,
       isTrip: requestIds?.length > 0 && !invalidRequestIds,
       logs: [log],
       remarks,
@@ -242,22 +259,35 @@ const attachProperties = async (payments) => {
       return null;
     }
   });
-  const vendors = await VendorAgentModel.find(
-    { _id: { $in: vendorIds } },
-    { companyName: 1, firstName: 1, lastName: 1 }
-  ).lean();
-
+  const customerIds = payments.map((payment) => {
+    if (payment.customerId && payment.customerId !== "") {
+      return payment.customerId;
+    } else {
+      return null;
+    }
+  });
+  const vendors = await VendorAgentModel.find({
+    _id: { $in: vendorIds },
+  }).lean();
+  const customers = await CustomerModel.find({
+    _id: { $in: customerIds },
+  }).lean();
   const tripobjs = payments.map((payment) => payment.requestIds)?.flat();
   const tripIds = tripobjs.map((trip) => trip.requestId);
 
   const trips = await TripModel.find(
     { requestId: { $in: tripIds } },
-    { status: 1, requestId: 1, waybillNumber: 1 }
+    { status: 1, requestId: 1, waybillNumber: 1 , amount: 1}
   ).lean();
-
   const paymentWithVehicleAndTrip = payments.map((payment) => {
-    const vendor = vendors.find((vendor) => vendor._id == payment.vendorId);
+    const vendor = vendors.find(
+      (vendor) => vendor._id.toString() == payment.vendorId
+    );
     const vendorName = getName(vendor);
+    const customer = customers.find(
+      (customer) => customer._id.toString() == payment.customerId
+    );
+    const customerName = getName(customer);
     const { requestIds } = payment;
     let tripCollection = [];
     if (requestIds && requestIds.length > 0) {
@@ -267,6 +297,8 @@ const attachProperties = async (payments) => {
           tripCollection.push({
             ...trip,
             amountPaid: request.amount,
+            invoiceId: payment.invoiceId,
+            
           });
         }
       });
@@ -275,6 +307,8 @@ const attachProperties = async (payments) => {
     return {
       ...payment,
       vendorName,
+      customerName,
+      receievedFrom: vendor || customer,
       trips: tripCollection,
     };
   });
@@ -324,16 +358,16 @@ const getPayments = async (req, res) => {
         error: "Please provide organisation id",
       });
     }
-    const payment = await PaymentModel.find({
+    const payments = await PaymentModel.find({
       organisationId,
       disabled: disabled ? disabled : false,
     }).lean();
-    if (!payment)
+    if (!payments)
       return res
         .status(401)
         .json({ error: "Internal error in getting payment" });
 
-    const propertiesAttached = await attachProperties(payment, organisationId);
+    const propertiesAttached = await attachProperties(payments, organisationId);
 
     return res.status(200).send({
       message: "Payment fetched successfully",
@@ -409,7 +443,6 @@ const getPayment = async (req, res) => {
 
 const updatePayment = async (req, res) => {
   const { _id, userId, organisationId, requestIds } = req.body;
-  console.log("requestIds", requestIds);
   try {
     if (!_id) return res.status(400).json({ error: "Please provide _id" });
     if (!userId)
@@ -423,7 +456,7 @@ const updatePayment = async (req, res) => {
         error: "you dont have the permission to carry out this request",
       });
     const oldData = await PaymentModel.findById(_id).lean();
-    console.log("oldData", oldData);
+
     const newData = req.body;
     const difference = [];
 
