@@ -39,7 +39,7 @@ function authMiddleware(request, response, next) {
     })
     .catch((error) => {
       console.log("error in verifying token", error);
-      response.send({ message: "Could not authorize" }).status(400);
+      response.send({ message: "Could not authorize", error }).status(400);
     });
 }
 
