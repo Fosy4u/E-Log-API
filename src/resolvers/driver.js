@@ -583,10 +583,10 @@ const activateDriver = async (req, res) => {
     if (!driver) {
       return res.status(400).send({ error: "driver does not exist" });
     }
-    if (!driver?.driversLicense?.link) {
+    if (!driver?.driversLicense?.link && activate) {
       return res.status(400).send({ error: "driver license not uploaded" });
     }
-    if (new Date() > new Date(driver?.licenseExpiryDate)) {
+    if (new Date() > new Date(driver?.licenseExpiryDate) && activate) {
       return res.status(400).send({ error: "driver license has expired" });
     }
     const update = await DriverModel.findByIdAndUpdate(
