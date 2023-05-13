@@ -10,6 +10,7 @@ const Expenses = new mongoose.Schema({
   vehicleId: { type: String , default: null},
   userId: { type: String, required: true },
   tripId: { type: String , default: null},
+  tyreId: { type: String , default: null},
   vendorId: { type: String, default: null },
   expenseType: { type: String, required: true },
   amount: { type: Number, required: true },
