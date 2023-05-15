@@ -5,6 +5,15 @@ const timestamp = require("mongoose-timestamp");
 const InvoiceSchema = new mongoose.Schema({
   organisationId: { type: String, required: true },
   invoiceId: { type: String, required: true },
+  shareCode: {
+    type: {
+      code: String,
+      date: Date,
+      userId: String,
+      expiresAt: Date,
+    },
+    required: false,
+  },
   vendorId: { type: String },
   disabled: { type: Boolean, default: false },
   date: { type: Date, required: true },

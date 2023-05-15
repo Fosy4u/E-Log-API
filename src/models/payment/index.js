@@ -16,6 +16,15 @@ const PaymentSchema = new mongoose.Schema({
       },
     ],
   },
+  shareCode: {
+    type: {
+      code: String,
+      date: Date,
+      userId: String,
+      expiresAt: Date,
+    },
+    required: false,
+  },
   isTrip: { type: Boolean, default: false },
   vendorId: { type: String },
   isVendorRequested: { type: Boolean, required: true },

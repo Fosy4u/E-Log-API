@@ -245,6 +245,15 @@ const TemplateSchema = new mongoose.Schema({
         value: "Charity",
       },
       {
+        name: "Bonus",
+        value: "Bonus",
+      },
+      {
+        name: "Motor Boy Fee",
+        value: "Motor Boy Fee",
+      },
+
+      {
         name: "Other",
         value: "Other",
       },
