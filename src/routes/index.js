@@ -19,9 +19,13 @@ const paymentResolver = require("../resolvers/payment");
 const invoiceResolver = require("../resolvers/invoice");
 const tyreResolver = require("../resolvers/tyre");
 const reportResolver = require("../resolvers/report");
+const docValidatorResolver = require("../resolvers/docValidator");
 
 let routes = (app) => {
   router.get("/", homeResolver.getHome);
+
+  //DocValidator
+  router.get("/francong/validateDoc", docValidatorResolver.getDoc);
 
   //OgranisationProfile
   router.post(
@@ -478,6 +482,11 @@ let routes = (app) => {
     authMiddleware,
     paymentResolver.editPaymentRemark
   );
+  router.put(
+    "/payment/shareCode",
+    authMiddleware,
+    paymentResolver.getReceiptShareCode
+  );
 
   //Invoice
 
@@ -533,6 +542,11 @@ let routes = (app) => {
     "/invoice/editRemark",
     authMiddleware,
     invoiceResolver.editInvoiceRemark
+  );
+  router.put(
+    "/invoice/shareCode",
+    authMiddleware,
+    invoiceResolver.getInvoiceShareCode
   );
 
   //Tyre

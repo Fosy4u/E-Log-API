@@ -4,6 +4,7 @@ const TruckModel = require("../models/truck");
 const TripModel = require("../models/trip");
 const InvoiceModel = require("../models/invoice");
 const CustomerModel = require("../models/customer");
+const ShortUniqueId = require("short-unique-id");
 const mongoose = require("mongoose");
 const moment = require("moment");
 const {
@@ -277,7 +278,7 @@ const attachProperties = async (payments) => {
 
   const trips = await TripModel.find(
     { requestId: { $in: tripIds } },
-    { status: 1, requestId: 1, waybillNumber: 1 , amount: 1}
+    { status: 1, requestId: 1, waybillNumber: 1, amount: 1 }
   ).lean();
   const paymentWithVehicleAndTrip = payments.map((payment) => {
     const vendor = vendors.find(
@@ -298,7 +299,6 @@ const attachProperties = async (payments) => {
             ...trip,
             amountPaid: request.amount,
             invoiceId: payment.invoiceId,
-            
           });
         }
       });
@@ -934,6 +934,75 @@ const getPaymentRemarks = async (req, res) => {
   }
 };
 
+const generateUniqueShareCode = async (organisationId) => {
+  let code;
+  let found = true;
+  const options = {
+    length: 6,
+  };
+
+  do {
+    const randomVal = new ShortUniqueId(options).randomUUID();
+    code = `${randomVal}`;
+    const exist = await InvoiceModel.findOne(
+      {
+        organisationId,
+        "shareCode.code": code,
+      },
+      { lean: true }
+    );
+
+    if (exist || exist !== null) {
+      found = true;
+    } else {
+      found = false;
+    }
+  } while (found);
+
+  return code.toString();
+};
+
+const getReceiptShareCode = async (req, res) => {
+  try {
+    console.log(req.body);
+    const { _id, userId, organisationId, expiresAt } = req.body;
+
+    if (!_id) return res.status(400).send({ error: "invoice _id is required" });
+    if (!userId) return res.status(400).send({ error: "userId is required" });
+    if (!organisationId)
+      return res.status(400).send({ error: "organisationId is required" });
+    const code = await generateUniqueShareCode(organisationId);
+
+    const shareCode = {
+      code,
+      date: new Date(),
+      userId,
+      expiresAt: moment(expiresAt).toISOString(),
+    };
+    const log = {
+      date: new Date(),
+      userId: userId,
+      action: "stamp",
+      details: `Payment - share code generated`,
+      reason: `Share code generated`,
+    };
+
+    const mark = await PaymentModel.findByIdAndUpdate(
+      _id,
+      {
+        shareCode,
+        $push: { logs: log },
+      },
+      { new: true }
+    );
+    if (!mark) return res.status(400).send({ error: "Invoice not found" });
+    return res
+      .status(200)
+      .send({ message: "Invoice marked as sent successfully", data: mark });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
 module.exports = {
   addPaymentRemark,
   deletePaymentRemark,
@@ -947,4 +1016,5 @@ module.exports = {
   deletePayments,
   getPaymentLogs,
   getInvoicesRecordedPayment,
+  getReceiptShareCode,
 };

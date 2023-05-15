@@ -4,6 +4,7 @@ const moment = require("moment");
 const CustomerModel = require("../models/customer");
 const TripModel = require("../models/trip");
 const mongoose = require("mongoose");
+const ShortUniqueId = require("short-unique-id");
 const {
   canDeleteOrEditOrganisationInvoiceRemark,
   canEditOrganisationInvoice,
@@ -1006,6 +1007,80 @@ const markInvoiceAsSent = async (req, res) => {
   }
 };
 
+const generateUniqueShareCode = async (organisationId) => {
+  console.log("here 2", organisationId);
+  let code;
+  let found = true;
+  const options = {
+    length: 6,
+  };
+
+  do {
+    const randomVal = new ShortUniqueId(options).randomUUID();
+    code = `${randomVal.toUpperCase()}`;
+
+    const exist = await InvoiceModel.findOne(
+      {
+        organisationId,
+        "shareCode.code": code,
+      },
+      { lean: true }
+    );
+
+    if (exist || exist !== null) {
+      found = true;
+    } else {
+      found = false;
+    }
+  } while (found);
+
+  return code.toString();
+};
+
+const getInvoiceShareCode = async (req, res) => {
+  try {
+    const { _id, userId, organisationId, expiresAt } = req.body;
+
+    if (!_id) return res.status(400).send({ error: "invoice _id is required" });
+    if (!userId) return res.status(400).send({ error: "userId is required" });
+    if (!organisationId)
+      return res.status(400).send({ error: "organisationId is required" });
+    const code = await generateUniqueShareCode(organisationId);
+    if (!code)
+      return res.status(400).send({ error: "Error in generating share code" });
+    console.log("code", code);
+
+    const shareCode = {
+      code,
+      date: new Date(),
+      userId,
+      expiresAt: moment(expiresAt).toISOString(),
+    };
+    const log = {
+      date: new Date(),
+      userId: userId,
+      action: "stamp",
+      details: `Invoice - share code generated`,
+      reason: `Share code generated`,
+    };
+
+    const mark = await InvoiceModel.findByIdAndUpdate(
+      _id,
+      {
+        shareCode,
+        $push: { logs: log },
+      },
+      { new: true }
+    );
+    if (!mark) return res.status(400).send({ error: "Invoice not found" });
+    return res
+      .status(200)
+      .send({ message: "Invoice marked as sent successfully", data: mark });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+
 module.exports = {
   addInvoiceRemark,
   deleteInvoiceRemark,
@@ -1020,4 +1095,5 @@ module.exports = {
   getInvoiceLogs,
   getUnpaidInvoices,
   markInvoiceAsSent,
+  getInvoiceShareCode,
 };
