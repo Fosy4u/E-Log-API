@@ -52,7 +52,7 @@ const deleteImageFromFirebase = async (name) => {
       .file("/expenses/" + name)
       .delete()
       .then(() => {
-        console.log("del is", name);
+
         return true;
       })
       .catch((err) => {
@@ -213,7 +213,7 @@ const createExpenses = async (req, res) => {
     const saveExpenses = await newExpenses.save();
     if (!saveExpenses)
       return res.status(401).json({ error: "Internal in saving expenses" });
-    console.log("saveExpenses", saveExpenses.date);
+
     return res
       .status(200)
       .send({ message: "Expenses created successfully", data: saveExpenses });
@@ -241,12 +241,19 @@ const attachVehicleAndVendor = async (expenses, organisationId) => {
     { assignedPartnerId: 1, regNo: 1 }
   ).lean();
   const vendorIds = expenses.map((expense) => {
-    if (expense.vendorId && expense.vendorId !== "") {
+    if (
+      expense.vendorId &&
+      expense.vendorId !== "" &&
+      expense.vendorId !== null &&
+      expense.vendorId !== undefined &&
+      expense.vendorId !== "undefined"
+    ) {
       return expense.vendorId;
     } else {
       return null;
     }
   });
+
   const vendors = await VendorAgentModel.find(
     { _id: { $in: vendorIds } },
     { companyName: 1, firstName: 1, lastName: 1 }
@@ -266,9 +273,9 @@ const attachVehicleAndVendor = async (expenses, organisationId) => {
     const vehicle = vehicles.find(
       (vehicle) => vehicle._id == expense.vehicleId
     );
-    const vendor = vendors.find((vendor) => vendor._id == expense.vendorId);
+
+    const vendor = vendors.find((vendor) => vendor?._id == expense?.vendorId);
     const vendorName = getName(vendor);
-    console.log(vendorName);
     const trip = trips.find((trip) => trip.requestId == expense.tripId);
     return {
       ...expense,
@@ -288,6 +295,7 @@ const getExpenses = async (req, res) => {
         error: "Please provide organisation id",
       });
     }
+
     const expenses = await ExpensesModel.find({
       organisationId,
       disabled: disabled ? disabled : false,
@@ -296,6 +304,7 @@ const getExpenses = async (req, res) => {
       return res
         .status(401)
         .json({ error: "Internal error in getting expenses" });
+   
 
     const expensesWithVehicle = await attachVehicleAndVendor(
       expenses,
