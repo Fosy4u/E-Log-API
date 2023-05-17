@@ -10,6 +10,7 @@ function isValidObjectId(id) {
 }
 
 function authMiddleware(request, response, next) {
+ 
   const headerToken = request.headers.authorization;
   if (!headerToken) {
     console.log("No token provided");
