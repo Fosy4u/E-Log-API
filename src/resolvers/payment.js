@@ -943,7 +943,7 @@ const generateUniqueShareCode = async (organisationId) => {
 
   do {
     const randomVal = new ShortUniqueId(options).randomUUID();
-    code = `${randomVal}`;
+    code = `${randomVal.toUpperCase()}`;
     const exist = await InvoiceModel.findOne(
       {
         organisationId,
@@ -964,7 +964,7 @@ const generateUniqueShareCode = async (organisationId) => {
 
 const getReceiptShareCode = async (req, res) => {
   try {
-    console.log(req.body);
+   
     const { _id, userId, organisationId, expiresAt } = req.body;
 
     if (!_id) return res.status(400).send({ error: "invoice _id is required" });
@@ -998,7 +998,7 @@ const getReceiptShareCode = async (req, res) => {
     if (!mark) return res.status(400).send({ error: "Invoice not found" });
     return res
       .status(200)
-      .send({ message: "Invoice marked as sent successfully", data: mark });
+      .send({ message: "Share code generated successfully", data: mark });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
