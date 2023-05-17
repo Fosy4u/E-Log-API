@@ -52,7 +52,6 @@ const deleteImageFromFirebase = async (name) => {
       .file("/expenses/" + name)
       .delete()
       .then(() => {
-
         return true;
       })
       .catch((err) => {
@@ -304,7 +303,6 @@ const getExpenses = async (req, res) => {
       return res
         .status(401)
         .json({ error: "Internal error in getting expenses" });
-   
 
     const expensesWithVehicle = await attachVehicleAndVendor(
       expenses,
@@ -377,7 +375,13 @@ const updateExpenses = async (req, res) => {
         });
       }
     }
-    if (req.body?.vendorId && req.body?.vendorId !== oldData?.vendorId) {
+    if (
+      req.body?.vendorId &&
+      req.body?.vendorId !== oldData?.vendorId &&
+      oldData?.vendorId !== null &&
+      oldData?.vendorId !== undefined &&
+      oldData?.vendorId !== "undefined"
+    ) {
       const oldVendor = await VendorAgentModel.findOne({
         _id: oldData?.vendorId,
         organisationId,
