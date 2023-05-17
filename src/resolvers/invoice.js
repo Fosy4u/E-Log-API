@@ -1048,7 +1048,7 @@ const getInvoiceShareCode = async (req, res) => {
     const code = await generateUniqueShareCode(organisationId);
     if (!code)
       return res.status(400).send({ error: "Error in generating share code" });
-    console.log("code", code);
+   
 
     const shareCode = {
       code,
@@ -1069,6 +1069,7 @@ const getInvoiceShareCode = async (req, res) => {
       {
         shareCode,
         $push: { logs: log },
+        // sentToCustomer: true,
       },
       { new: true }
     );
