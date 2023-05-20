@@ -18,6 +18,7 @@ const templateResolver = require("../resolvers/template");
 const paymentResolver = require("../resolvers/payment");
 const invoiceResolver = require("../resolvers/invoice");
 const tyreResolver = require("../resolvers/tyre");
+const tyreRepairResolver = require("../resolvers/tyreRepair");
 const reportResolver = require("../resolvers/report");
 const docValidatorResolver = require("../resolvers/docValidator");
 
@@ -606,6 +607,35 @@ let routes = (app) => {
     tyreResolver.deleteTyreRemark
   );
   router.put("/tyre/editRemark", authMiddleware, tyreResolver.editTyreRemark);
+
+  //TyreRepair
+  router.post(
+    "/tyreRepair/create",
+    authMiddleware,
+    tyreRepairResolver.createTyreRepair
+  );
+  router.get("/tyreRepairs", authMiddleware, tyreRepairResolver.getTyreRepairs);
+  router.get(
+    "/tyreRepairs/tyre",
+    authMiddleware,
+    tyreRepairResolver.getTyreRepairsByTyre
+  );
+  router.get(
+    "/tyreRepairs/vehicleId",
+    authMiddleware,
+    tyreRepairResolver.getTyreRepairsByVehicleID
+  );
+  router.get("/tyreRepair", authMiddleware, tyreRepairResolver.getTyreRepair);
+  router.put(
+    "/tyreRepair/edit",
+    authMiddleware,
+    tyreRepairResolver.updateTyreRepair
+  );
+  router.delete(
+    "/tyreRepair/delete",
+    authMiddleware,
+    tyreRepairResolver.deleteTyreRepair
+  );
 
   //Template
   router.get("/template", templateResolver.getTemplate);
