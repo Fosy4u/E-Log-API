@@ -514,7 +514,7 @@ const getTyre = async (req, res) => {
     const tyre = await TyreModel.findOne({ _id, organisationId }).lean();
     if (!tyre) return res.status(400).send({ error: "tyre not found" });
     const tyreWithStatusList = { ...tyre };
-    const statusList = tyreWithStatusList?.statusList;
+    const statusList = tyreWithStatusList?.statusList || [];
     const statusListWithUser = [];
     if (statusList.length > 0) {
       await Promise.all(
