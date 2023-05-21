@@ -3,6 +3,7 @@ const VendorAgentModel = require("../models/vendorAgent");
 const TruckModel = require("../models/truck");
 const TripModel = require("../models/trip");
 const TyreInspectionModel = require("../models/tyreInspection");
+const OrganisationUserModel = require("../models/organisationUsers");
 const mongoose = require("mongoose");
 const {
   canDeleteOrEditOrganisationTyreRemark,
@@ -158,12 +159,24 @@ const createTyre = async (req, res) => {
       }
     }
     let params;
-
+    const statusList = [
+      {
+        status: "Added",
+        date: new Date(),
+        userId,
+      },
+      {
+        status,
+        date: new Date(),
+        userId,
+      },
+    ];
     params = {
       ...req.body,
       logs: [log],
       remarks,
       trips,
+      statusList,
     };
 
     const newTyres = new TyreModel({
@@ -313,12 +326,9 @@ const attachVehicle = async (tyres, organisationId) => {
     }
   });
 
-  const vehicles = await TruckModel.find(
-    {
-      _id: { $in: vehicleIds },
-    },
-    { assignedPartnerId: 1, regNo: 1 }
-  ).lean();
+  const vehicles = await TruckModel.find({
+    _id: { $in: vehicleIds },
+  }).lean();
 
   const tyresWithVehicle = tyres.map((tyre) => {
     const vehicle = vehicles.find((vehicle) => vehicle._id == tyre.vehicleId);
@@ -496,21 +506,93 @@ const getTyreInspectionByVehicleId = async (req, res) => {
 };
 
 const getTyre = async (req, res) => {
-  
   try {
     const { _id, organisationId } = req.query;
     if (!_id) return res.status(400).send({ error: "tyre _id is required" });
-    if (!organisationId )
+    if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
     const tyre = await TyreModel.findOne({ _id, organisationId }).lean();
     if (!tyre) return res.status(400).send({ error: "tyre not found" });
+    const tyreWithStatusList = { ...tyre };
+    const statusList = tyreWithStatusList?.statusList || [];
+    const statusListWithUser = [];
+    if (statusList.length > 0) {
+      await Promise.all(
+        statusList.map(async (status) => {
+          const { userId } = status;
+          const user = await OrganisationUserModel.findOne(
+            {
+              _id: userId,
+            },
+            {
+              firstName: 1,
+              lastName: 1,
+              imageUrl: 1,
+            }
+          ).lean();
+          if (user) {
+            statusListWithUser.push({
+              ...status,
+              user,
+            });
+          }
+        })
+      );
+    }
+    tyreWithStatusList.statusList = statusListWithUser.sort(function (a, b) {
+      return new Date(b?.date) - new Date(a?.date);
+    });
 
-    const tyreWithVehicle = await attachVehicle([tyre], organisationId);
-
+    const tyreWithVehicle = await attachVehicle(
+      [tyreWithStatusList],
+      organisationId
+    );
 
     const tyreWithTrip = await attachTrip(tyreWithVehicle[0], organisationId);
+    const inspections = await TyreInspectionModel.find({
+      organisationId,
+      "details.serialNo": tyre.serialNo,
+    })
+      .lean()
+      .sort({ date: -1 });
 
-    return res.status(200).send({ data: tyreWithTrip });
+    const tyreInspections = [];
+    const test = [];
+    if (inspections.length > 0) {
+      await Promise.all(
+        inspections.map(async (inspection) => {
+          const { userId, details } = inspection;
+          const detail = details.find(
+            (detail) => detail.serialNo === tyre.serialNo
+          );
+
+          const user = await OrganisationUserModel.findOne(
+            {
+              _id: userId,
+            },
+            {
+              firstName: 1,
+              lastName: 1,
+              imageUrl: 1,
+            }
+          ).lean();
+          if (detail) {
+            tyreInspections.push({
+              date: inspection.date,
+              inspectionId: inspection.inspectionId,
+              ...detail,
+              inspector: user,
+            });
+          }
+        })
+      );
+    }
+    const formattedTyre = {
+      ...tyreWithTrip,
+      inspections: tyreInspections,
+    };
+
+    return res.status(200).send({ data: formattedTyre });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
@@ -633,10 +715,19 @@ const updateTyre = async (req, res) => {
       reason: reason || "not provided",
       difference,
     };
+    let statuListObj = {};
+    if (status && status !== oldData?.status) {
+      statuListObj = {
+        status,
+        date: new Date(),
+        userId,
+      };
+    }
 
     const params = {
       ...req.body,
       logs: [log],
+      statusList: [...oldData?.statusList, statuListObj],
     };
 
     const updateTyres = await TyreModel.findByIdAndUpdate(
@@ -1088,21 +1179,19 @@ const addTyreRemark = async (req, res) => {
 
 const deleteTyreRemark = async (req, res) => {
   try {
-    const { tyresId, remarkId, userId } = req.body;
-    if (!tyresId) return res.status(400).send({ error: "tyresId is required" });
+    const { tyreId, remarkId, userId } = req.body;
+    if (!tyreId) return res.status(400).send({ error: "tyreId is required" });
     if (!remarkId)
       return res.status(400).send({ error: "remarkId is required" });
     if (!userId)
       return res.status(400).send({ error: "current userId is required" });
 
     const tyres = await TyreModel.findById({
-      _id: tyresId,
+      _id: tyreId,
     });
     if (!tyres) return res.status(400).send({ error: "tyres not found" });
-    const param = { tyresId, remarkId, userId };
-    const canPerformAction = await canDeleteOrEditOrganisationTyresRemark(
-      param
-    );
+    const param = { tyreId, remarkId, userId };
+    const canPerformAction = await canDeleteOrEditOrganisationTyreRemark(param);
     if (!canPerformAction)
       return res
         .status(400)
@@ -1117,7 +1206,7 @@ const deleteTyreRemark = async (req, res) => {
 
     const updateRemark = await TyreModel.findByIdAndUpdate(
       {
-        _id: tyresId,
+        _id: tyreId,
       },
       {
         $pull: {
@@ -1135,8 +1224,8 @@ const deleteTyreRemark = async (req, res) => {
 };
 const editTyreRemark = async (req, res) => {
   try {
-    const { tyresId, remarkId, userId, remark } = req.body;
-    if (!tyresId) return res.status(400).send({ error: "tyresId is required" });
+    const { tyreId, remarkId, userId, remark } = req.body;
+    if (!tyreId) return res.status(400).send({ error: "tyreId is required" });
     if (!remarkId)
       return res.status(400).send({ error: "remarkId is required" });
     if (!userId)
@@ -1144,10 +1233,10 @@ const editTyreRemark = async (req, res) => {
     if (!remark) return res.status(400).send({ error: "remark is required" });
 
     const tyres = await TyreModel.findById({
-      _id: tyresId,
+      _id: tyreId,
     });
     if (!tyres) return res.status(400).send({ error: "tyres not found" });
-    const param = { tyresId, remarkId, userId };
+    const param = { tyreId, remarkId, userId };
     const canPerformAction = await canDeleteOrEditOrganisationTyreRemark(param);
     if (!canPerformAction)
       return res
@@ -1156,7 +1245,7 @@ const editTyreRemark = async (req, res) => {
 
     const updateRemark = await TyreModel.updateOne(
       {
-        _id: tyresId,
+        _id: tyreId,
         remarks: { $elemMatch: { _id: remarkId } },
       },
 
@@ -1175,7 +1264,7 @@ const editTyreRemark = async (req, res) => {
       details: `edited remark on tyres`,
     };
     const updateTyre = await TyreModel.findByIdAndUpdate(
-      { _id: tyresId },
+      { _id: tyreId },
       { $push: { logs: log } },
       { new: true }
     );

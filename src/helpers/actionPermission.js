@@ -92,7 +92,6 @@ const canEditOrganisationTrip = async (param) => {
 
 const canDeleteOrEditOrganisationTyreRemark = async (param) => {
   const { tyreId, remarkId, userId } = param;
-
   let canPerformAction = false;
   const tyre = await TyreModel.findOne({
     _id: tyreId,
