@@ -33,6 +33,14 @@ var corsOptions = {
           "http://localhost:3000",
           "www.francongtech.com:*",
           "https://www.francongtech.com/:*",
+          "https://www.francongtech.com/:3000",
+          "https://elog.francongtech.com/:3000",
+          "https://francongtech.com/:3000",
+          "https://elog.francongtech.com/:3000",
+          "https://app.francongtech.com/:3000",
+          "https://dev-elog-nemfra.netlify.app/:3000",
+          "https://elog.francongtech.com",
+
         ],
 
   exposedHeaders: ["f-version"],
