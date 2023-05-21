@@ -25,11 +25,14 @@ var corsOptions = {
     ENV === "dev"
       ? "*"
       : [
-          "https://elog.francongtech.com/",
-          "https://francongtech.com/",
-          "https://elog.francongtech.com/",
-          "https://app.francongtech.com/",
-          "https://dev-elog-nemfra.netlify.app/",
+          "https://elog.francongtech.com/:*",
+          "https://francongtech.com/:*",
+          "https://elog.francongtech.com/:*",
+          "https://app.francongtech.com/:*",
+          "https://dev-elog-nemfra.netlify.app/:*",
+          "http://localhost:3000",
+          "www.francongtech.com:*",
+          "https://www.francongtech.com/:*",
         ],
 
   exposedHeaders: ["f-version"],
