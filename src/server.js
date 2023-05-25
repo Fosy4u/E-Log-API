@@ -30,7 +30,6 @@ var corsOptions = {
           "https://elog.francongtech.com/:*",
           "https://app.francongtech.com/:*",
           "https://dev-elog-nemfra.netlify.app/:*",
-          "www.francongtech.com:*",
           "https://www.francongtech.com/:*",
           "https://www.francongtech.com/:3000",
           "https://elog.francongtech.com/:3000",
@@ -39,6 +38,7 @@ var corsOptions = {
           "https://app.francongtech.com/:3000",
           "https://dev-elog-nemfra.netlify.app/:3000",
           "https://elog.francongtech.com",
+          "http://localhost:3000"
 
         ],
 

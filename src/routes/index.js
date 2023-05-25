@@ -42,6 +42,18 @@ let routes = (app) => {
     upload,
     organisationProfileResolver.editOrganisationProfile
   );
+  router.put(
+    "/organisation/addOrganisationEmailSenders",
+    organisationProfileResolver.addOrganisationEmailSenders
+  );
+  router.put(
+    "/organisation/deleteOrganisationEmailSenders",
+    organisationProfileResolver.deleteOrganisationEmailSenders
+  );
+  router.put(
+    "/organisation/makeDefaultOrganisationEmailSenders",
+    organisationProfileResolver.makeDefaultOrganisationEmailSenders
+  );
   router.delete(
     "/organisation/deletionReason",
     organisationProfileResolver.deleteOrganisationProfileDeletionReason
@@ -749,51 +761,12 @@ let routes = (app) => {
     authMiddleware,
     organisationContactResolver.getOrganisationContact
   );
-  router.get(
-    "/organisationContact/ContactRemark",
-    authMiddleware,
-    organisationContactResolver.getOrganisationContactRemark
-  );
-  router.get(
-    "/organisationContact/ContactLogs",
-    authMiddleware,
-    organisationContactResolver.getOrganisationContactLogs
-  );
-  router.get(
-    "/organisationContact/CustomerRanking",
-    authMiddleware,
-    organisationContactResolver.getOrganisationCustomerRanking
-  );
-  router.get(
-    "/organisationContact/CustomerStatement",
-    authMiddleware,
-    organisationContactResolver.getCustomerStatement
-  );
   router.put(
     "/organisationContact/editContact",
     authMiddleware,
     organisationContactResolver.editOrganisationContact
   );
-  router.put(
-    "/organisationContact/addRemark",
-    authMiddleware,
-    organisationContactResolver.addOrganisationContactRemark
-  );
-  router.put(
-    "/organisationContact/deleteRemark",
-    authMiddleware,
-    organisationContactResolver.deleteOrganisationContactRemark
-  );
-  router.put(
-    "/organisationContact/deleteContact",
-    authMiddleware,
-    organisationContactResolver.deleteOrganisationContact
-  );
-  router.put(
-    "/organisationContact/restoreContact",
-    authMiddleware,
-    organisationContactResolver.restoreOrganisationContact
-  );
+ 
 
   return app.use("/", router);
 };
