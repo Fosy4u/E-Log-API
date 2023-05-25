@@ -25,6 +25,7 @@ var corsOptions = {
     ENV === "dev"
       ? "*"
       : [
+        "https://app.francongtech.com/",
           "https://elog.francongtech.com/:*",
           "https://francongtech.com/:*",
           "https://elog.francongtech.com/:*",
