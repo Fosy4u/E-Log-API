@@ -24,7 +24,7 @@ var corsOptions = {
   origin:
     ENV === "dev"
       ? "*"
-      : "*"
+      : "*",
       // [
       //     "https://app.francongtech.com/:3001",
       //     "https://elog.francongtech.com/:*",
