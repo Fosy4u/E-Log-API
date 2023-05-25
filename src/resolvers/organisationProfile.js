@@ -1,6 +1,7 @@
 const OrganisationProfileModel = require("../models/organisationProfile");
 const OrganisationUserModel = require("../models/organisationUsers");
 const TemplateModel = require("../models/template");
+const validator = require("email-validator");
 
 const { storageRef } = require("../config/firebase"); // reference to our db
 const root = require("../../root");
@@ -90,6 +91,17 @@ const createOrganisationProfile = async (req, res) => {
       organisationId: newOrganisation._id,
     });
     const newTemplate = await template.save();
+    // update organisation with emailSenders
+    const emailSender = {
+      name: `${firstName} ${lastName}`,
+      email: contactEmail,
+      default: true,
+    };
+    const updateOrganisation = await OrganisationProfileModel.findByIdAndUpdate(
+      newOrganisation._id,
+      { emailSenders: [emailSender] },
+      { new: true }
+    );
 
     return res.status(200).send({ data: [newOrganisation, newUser] });
   } catch (error) {
@@ -140,7 +152,7 @@ const editOrganisationProfile = async (req, res) => {
         deletionReason,
       } = req.body;
       if (!_id)
-        return res.status(400).send({ error: " - no organisation to update" });
+        return res.status(400).send({ error: "No organisation to update" });
       const social = req.body.social ? JSON.parse(req.body.social) : [];
       const regionalSettings = req.body.regionalSettings
         ? JSON.parse(req.body.regionalSettings)
@@ -317,6 +329,88 @@ const updateBankDetails = async (req, res) => {
   }
 };
 
+const addOrganisationEmailSenders = async (req, res) => {
+  try {
+    const { organisationId, email, name } = req.body;
+    if (!organisationId)
+      return res.status(400).send({ error: "No organisation to update"});
+    if (!email) return res.status(400).send({ error: "No email to add"});
+    if (!name) return res.status(400).send({ error: "No name to add"});
+    const found = await OrganisationProfileModel.findOne({
+      _id: organisationId,
+      emailSenders: { $elemMatch: { email } },
+    });
+    if (found)
+      return res.status(400).send({ error: "Email already exist in emailSenders"});
+    // check valid email address
+    if (!validator.validate(email))
+      return res.status(400).send({ error: "Invalid email address"});
+    const emailSender = { email, name };
+    const update = await OrganisationProfileModel.findByIdAndUpdate(
+      organisationId,
+      { $push: { emailSenders: emailSender } },
+      { new: true }
+    );
+    if (!update) return res.status(400).send({ error: " - organisation not updated"});
+    return res.status(200).send({ data: update });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+const deleteOrganisationEmailSenders = async (req, res) => {
+  try {
+    const { organisationId, email } = req.body;
+    if (!organisationId)
+      return res.status(400).send({ error: "organisationId is required"});
+    if (!email) return res.status(400).send({ error: "email is required"});
+    const update = await OrganisationProfileModel.findByIdAndUpdate(
+      organisationId,
+      { $pull: { emailSenders: { email } } },
+      { new: true }
+    );
+    if (!update) return res.status(400).send({ error: "organisation not updated"});
+    return res.status(200).send({ data: update });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+const makeDefaultOrganisationEmailSenders = async (req, res) => {
+  try {
+    const { organisationId, email } = req.body;
+    if (!organisationId)
+      return res.status(400).send({error: "organisationId is required"});
+    if (!email) return res.status(400).send({error: "email is required"});
+    const org = await OrganisationProfileModel.findOne({
+      _id: organisationId,
+    }).lean();
+  
+    const emailSenders = org.emailSenders;
+    console.log("em", emailSenders);
+    if (!emailSenders || emailSenders.length === 0)
+      return res.status(400).send({error: "emailSenders is empty"});
+
+    const found = emailSenders.find((sender) => sender.email === email);
+    if (!found)
+      return res.status(400).send({error: "email does not exist in emailSenders"});
+    const modifiedEmailSenders = emailSenders.map((sender) => {
+      if (sender.email === email) {
+        return { ...sender, default: true };
+      }
+      return { ...sender, default: false };
+    });
+    const update = await OrganisationProfileModel.findByIdAndUpdate(
+      organisationId,
+      { emailSenders: modifiedEmailSenders },
+      { new: true }
+    );
+    if (!update) return res.status(400).send({error: "organisation not updated"});
+
+    return res.status(200).send({ data: update });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+
 module.exports = {
   createOrganisationProfile,
   getOrganisationProfile,
@@ -325,4 +419,7 @@ module.exports = {
   getBankDetails,
   deleteBankDetails,
   updateBankDetails,
+  addOrganisationEmailSenders,
+  deleteOrganisationEmailSenders,
+  makeDefaultOrganisationEmailSenders,
 };

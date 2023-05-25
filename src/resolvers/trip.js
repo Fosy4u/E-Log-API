@@ -304,6 +304,41 @@ const getInvoicePaidAndAmountDue = async (request, invoiceId) => {
 
   return { paid, amountDue };
 };
+const resolveInvoiceStatus = async (trip, organisationId) => {
+  let isInvoiced = false;
+  let invoice = {};
+  const invoiced = await InvoiceModel.findOne({
+    organisationId,
+    disabled: false,
+    "requestIds.requestId": trip?.requestId,
+  }).lean();
+  if (invoiced) {
+    isInvoiced = true;
+    const request = invoiced.requestIds.find(
+      (request) => request.requestId === trip?.requestId
+    );
+
+    const calc = await Promise.resolve(
+      getInvoicePaidAndAmountDue(request, invoiced?.invoiceId)
+    );
+    const { amountDue, paid } = calc;
+    let status = "Draft";
+    if (invoiced?.sentToCustomer) {
+      status = "Sent";
+    }
+    if (paid > 0 && amountDue === 0) {
+      status = "Paid";
+    }
+    if (paid > 0 && amountDue > 0) {
+      status = "Partially Paid";
+    }
+    invoice.invoiceId = invoiced?.invoiceId;
+    invoice.status = status;
+    invoice.amountDue = amountDue;
+    invoice.paid = paid;
+  }
+  return { isInvoiced, invoice };
+};
 
 const getTrip = async (req, res) => {
   try {
@@ -317,38 +352,11 @@ const getTrip = async (req, res) => {
       [trip],
       organisationId
     );
-    let isInvoiced = false;
-    let invoice = {};
-    const invoiced = await InvoiceModel.findOne({
-      organisationId,
-      disabled: false,
-      "requestIds.requestId": trip?.requestId,
-    }).lean();
-    if (invoiced) {
-      isInvoiced = true;
-      const request = invoiced.requestIds.find(
-        (request) => request.requestId === trip?.requestId
-      );
-
-      const calc = await Promise.resolve(
-        getInvoicePaidAndAmountDue(request, invoiced?.invoiceId)
-      );
-      const { amountDue, paid } = calc;
-      let status = "Draft";
-      if (invoiced?.sentToCustomer) {
-        status = "Sent";
-      }
-      if (paid > 0 && amountDue === 0) {
-        status = "Paid";
-      }
-      if (paid > 0 && amountDue > 0) {
-        status = "Partially Paid";
-      }
-      invoice.invoiceId = invoiced?.invoiceId;
-      invoice.status = status;
-      invoice.amountDue = amountDue;
-      invoice.paid = paid;
-    }
+    const resolvedInvoicedTrip = await resolveInvoiceStatus(
+      trip,
+      organisationId
+    );
+    const { isInvoiced, invoice } = resolvedInvoicedTrip;
 
     return res.status(200).send({
       data: {
@@ -402,9 +410,24 @@ const getTrips = async (req, res) => {
         );
       })
     );
+    const addInvoiceTrip = [];
+    await Promise.all(
+      trips.map(async (trip) => {
+        const resolvedInvoicedTrip = await resolveInvoiceStatus(
+          trip,
+          organisationId
+        );
+        const { isInvoiced, invoice } = resolvedInvoicedTrip;
+        addInvoiceTrip.push({
+          ...trip,
+          isInvoiced,
+          invoice,
+        });
+      })
+    );
 
     const tripsWithProperties = await attachTripProperties(
-      trips,
+      addInvoiceTrip,
       organisationId
     );
 

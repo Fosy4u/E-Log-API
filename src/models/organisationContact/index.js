@@ -31,23 +31,8 @@ const OrganisationContactSchema = new mongoose.Schema({
   },
   localGovernmentArea: { type: String, required: false },
   createdBy: { type: String, required: true },
-  type: { type: String, required: false },
-  customerGroups: { type: [String], required: false },
-  enableCustomerPortal: { type: Boolean, default: false },
   social: SocialSchema,
-  logs: [
-    {
-      date: Date,
-      user: String,
-      userId: String,
-      action: String,
-      details: String,
-      comment: String,
-      difference: [{ _id: false, field: String, old: String, new: String }],
-      reason: String,
-      customerPortal: { type: Boolean, default: false },
-    },
-  ],
+
 });
 
 OrganisationContactSchema.plugin(timestamp);

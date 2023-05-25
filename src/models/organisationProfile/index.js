@@ -43,6 +43,11 @@ const RegionalSettings = new mongoose.Schema({
     },
   },
 });
+const OrganisationEmailSenders = new mongoose.Schema({
+  name: { type: String, required: false },
+  email: { type: String, required: false },
+  default: { type: Boolean, default: false },
+});
 
 const OrganisationProfileSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -76,6 +81,8 @@ const OrganisationProfileSchema = new mongoose.Schema({
   },
 
   bankDetails: { type: [BankDetailSchema] },
+  emailSenders: { type: [OrganisationEmailSenders], default: [] },
+ 
 });
 
 OrganisationProfileSchema.plugin(timestamp);
