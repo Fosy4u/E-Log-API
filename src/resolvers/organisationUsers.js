@@ -6,6 +6,7 @@ const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
 const { deleteLocalFile } = require("../helpers/utils");
+const validator = require("email-validator");
 
 //saving image to firebase storage
 const addImage = async (req, filename) => {
@@ -56,8 +57,24 @@ const deleteImageFromFirebase = async (name) => {
 };
 
 const createOrganisationUsers = async (req, res) => {
-  const { email, firstName, lastName, password, organisationId } = req.body;
+  const { email, firstName, lastName, organisationId } = req.body;
   try {
+    if (!organisationId) {
+      return res.status(400).send({ error: "organisationId is required" });
+    }
+    if (!email) {
+      return res.status(400).send({ error: "email is required" });
+    }
+    if (!firstName) {
+      return res.status(400).send({ error: "firstName is required" });
+    }
+    if (!lastName) {
+      return res.status(400).send({ error: "lastName is required" });
+    }
+    if (!validator.validate(email)) {
+      return res.status(400).send({ error: "email is invalid" });
+    }
+
     const user = OrganisationUserModel.find({ email });
     if (user) {
       return res
@@ -68,7 +85,6 @@ const createOrganisationUsers = async (req, res) => {
     const params = {
       firstName,
       lastName,
-      password,
       organisationId,
       isAdmin: false,
     };
@@ -115,9 +131,13 @@ const getOrganisationUsers = async (req, res) => {
 };
 const updateOrganisationUser = async (req, res) => {
   try {
-    const { _id } = req.body;
+    const { _id, email } = req.body;
     if (!_id) {
       return res.status(400).send({ error: "_id is required" });
+    }
+    if (email) {
+      if (!validator.validate(email))
+        return res.status(400).send({ error: "Invalid email address" });
     }
     const update = await OrganisationUserModel.findByIdAndUpdate(
       _id,

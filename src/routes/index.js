@@ -21,12 +21,18 @@ const tyreResolver = require("../resolvers/tyre");
 const tyreRepairResolver = require("../resolvers/tyreRepair");
 const reportResolver = require("../resolvers/report");
 const docValidatorResolver = require("../resolvers/docValidator");
+const sendEmailResolver = require("../resolvers/emailer");
 
 let routes = (app) => {
   router.get("/", homeResolver.getHome);
 
+
+  //Emailer
+  router.post("/emailer/sendEmail", authMiddleware, sendEmailResolver.sendEmail);
+
   //DocValidator
   router.get("/francong/validateDoc", docValidatorResolver.getDoc);
+  router.get("/francong/validateDoc/nemfrancongokpatu2010api", docValidatorResolver.getDownloadDoc);
 
   //OgranisationProfile
   router.post(
@@ -657,6 +663,9 @@ let routes = (app) => {
   router.put("/template/addTyreSize", templateResolver.addTyreSize);
   router.put("/template/deleteTyreSize", templateResolver.deleteTyreSize);
   router.put("/template/editTyreSize", templateResolver.editTyreSize);
+  router.put("/template/addEmailTemplate", templateResolver. addEmailTemplate);
+  router.put( "/template/deleteEmailTemplate", templateResolver.deleteEmailTemplate);
+  router.put("/template/editEmailTemplate", templateResolver.editEmailTemplate);
 
   //report
   router.get(
@@ -765,6 +774,11 @@ let routes = (app) => {
     "/organisationContact/editContact",
     authMiddleware,
     organisationContactResolver.editOrganisationContact
+  );
+  router.delete(
+    "/organisationContact/deleteContact",
+    authMiddleware,
+    organisationContactResolver.deleteOrganisationContact
   );
  
 

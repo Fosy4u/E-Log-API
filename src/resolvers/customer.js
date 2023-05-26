@@ -5,6 +5,7 @@ const OrganisationContactModel = require("../models/organisationContact");
 const OrganisationUserModel = require("../models/organisationUsers");
 const randomColor = require("randomcolor");
 const CustomerModel = require("../models/customer");
+const validator = require("email-validator");
 const {
   canDeleteOrEditOrganisationCustomerRemark,
 } = require("../helpers/actionPermission");
@@ -38,7 +39,7 @@ const generateColor = async (organisationId) => {
   return color;
 };
 const createCustomer = async (req, res) => {
-  const { organisationId, userId, remark, type } = req.body;
+  const { organisationId, userId, remark, type, email } = req.body;
   try {
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
@@ -49,6 +50,10 @@ const createCustomer = async (req, res) => {
       return res
         .status(400)
         .send({ error: "customer type must be either individual or company" });
+    if (email) {
+      if (!validator.validate(email))
+        return res.status(400).send({ error: "Invalid email address" });
+    }
     let remarks = [];
 
     if (remark) {
@@ -445,10 +450,14 @@ const getAllCustomers = async (req, res) => {
 
 const editCustomer = async (req, res) => {
   try {
-    const { _id, userId } = req.body;
+    const { _id, userId, email } = req.body;
     if (!_id)
       return res.status(400).send({ error: "customer _id is required" });
     if (!userId) return res.status(400).send({ error: "userId is required" });
+    if (email) {
+      if (!validator.validate(email))
+        return res.status(400).send({ error: "Invalid email address" });
+    }
     const customer = await CustomerModel.findById(_id).lean();
     if (!userId) {
       return res.status(400).json({

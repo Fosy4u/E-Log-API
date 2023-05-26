@@ -1,4 +1,5 @@
 const TemplateModel = require("../models/template");
+const validator = require("html-validator");
 
 const getTemplate = async (req, res) => {
   try {
@@ -70,11 +71,12 @@ const deleteTyreBrand = async (req, res) => {
 };
 const editTyreBrand = async (req, res) => {
   try {
-    const { organisationId, brand, newValue  } = req.body;
+    const { organisationId, brand, newValue } = req.body;
     if (!organisationId)
       return res.status(400).send({ error: " - organisationId not provided" });
     if (!brand) return res.status(400).send({ error: " - brand not provided" });
-    if (!newValue) return res.status(400).send({ error: " - newValue not provided" });
+    if (!newValue)
+      return res.status(400).send({ error: " - newValue not provided" });
     const templates = await TemplateModel.findOne({ organisationId });
     if (!templates)
       return res.status(400).send({ error: " - no templates found" });
@@ -154,11 +156,12 @@ const deleteTyreSize = async (req, res) => {
 };
 const editTyreSize = async (req, res) => {
   try {
-    const { organisationId, size, newValue  } = req.body;
+    const { organisationId, size, newValue } = req.body;
     if (!organisationId)
       return res.status(400).send({ error: " - organisationId not provided" });
     if (!size) return res.status(400).send({ error: " - size not provided" });
-    if (!newValue) return res.status(400).send({ error: " - newValue not provided" });
+    if (!newValue)
+      return res.status(400).send({ error: " - newValue not provided" });
     const templates = await TemplateModel.findOne({ organisationId });
     if (!templates)
       return res.status(400).send({ error: " - no templates found" });
@@ -181,6 +184,112 @@ const editTyreSize = async (req, res) => {
     return res.status(500).send(error.message);
   }
 };
+const addEmailTemplate = async (req, res) => {
+  try {
+    
+    const { organisationId, type, body } = req.body;
+    if (!organisationId)
+      return res.status(400).send({ error: " - organisationId not provided" });
+    if (!type) return res.status(400).send({ error: " - type not provided" });
+    if (!body) return res.status(400).send({ error: " - body not provided" });
+    // check if body is valid html
+
+    const options = {
+      validator: "WHATWG",
+      data: body,
+      isFragment: true,
+    };
+    try {
+      const result = await validator(options);
+      console.log(result);
+    } catch (error) {
+      console.error(error);
+      return res.status(400).send({ error: error.message });
+    }
+    const emailTemplate = {
+      type,
+      body,
+    };
+    const existingType = await TemplateModel.findOne({
+      organisationId,
+      "emailTemplates.type": type,
+    });
+    let updateTemplate;
+    if (existingType) {
+      //replace existing template
+      updateTemplate = await TemplateModel.findOneAndUpdate(
+        { organisationId, "emailTemplates.type": type },
+        { $set: { "emailTemplates.$": emailTemplate } },
+        { new: true }
+      );
+    } else {
+      updateTemplate = await TemplateModel.findOneAndUpdate(
+        { organisationId },
+        { $push: { emailTemplates: emailTemplate } },
+        { new: true }
+      );
+    }
+    if (!updateTemplate)
+      return res.status(400).send({ error: " - template not added" });
+    return res.status(200).send({ data: updateTemplate });
+  } catch (error) {
+    return res.status(500).send(error.message);
+  }
+};
+const deleteEmailTemplate = async (req, res) => {
+  try {
+    const { organisationId, emailTemplateId } = req.body;
+    if (!organisationId)
+      return res.status(400).send({ error: " - organisationId not provided" });
+    if (!emailTemplateId)
+      return res.status(400).send({ error: " - emailTemplateId not provided" });
+
+    const updateTemplate = await TemplateModel.findOneAndUpdate(
+      { organisationId },
+      { $pull: { emailTemplates: { _id: emailTemplateId } } },
+      { new: true }
+    );
+    if (!updateTemplate)
+      return res.status(400).send({ error: " - template not deleted" });
+    return res.status(200).send({ data: updateTemplate });
+  } catch (error) {
+    return res.status(500).send(error.message);
+  }
+};
+const editEmailTemplate = async (req, res) => {
+  try {
+    const { organisationId, emailTemplateId, body } = req.body;
+    if (!organisationId)
+      return res.status(400).send({ error: " - organisationId not provided" });
+    if (!emailTemplateId)
+      return res.status(400).send({ error: " - emailTemplateId not provided" });
+    if (!body) return res.status(400).send({ error: " - body not provided" });
+
+    const options = {
+      validator: "WHATWG",
+      data: body,
+      isFragment: true,
+    };
+    try {
+      const result = await validator(options);
+      console.log(result);
+    } catch (error) {
+      console.error(error);
+      return res.status(400).send({ error: error.message });
+    }
+    const updateTemplate = await TemplateModel.findOneAndUpdate(
+      { organisationId, "emailTemplates._id": emailTemplateId },
+      { $set: { "emailTemplates.$.body": body } },
+      { new: true }
+    );
+    if (!updateTemplate)
+      return res.status(400).send({ error: " - template not edited" });
+    return res.status(200).send({ data: updateTemplate });
+  } catch (error) {
+    console.log("err", error);
+    return res.status(500).send(error.message);
+  }
+};
 
 module.exports = {
   getTemplate,
@@ -190,4 +299,7 @@ module.exports = {
   addTyreSize,
   deleteTyreSize,
   editTyreSize,
+  addEmailTemplate,
+  deleteEmailTemplate,
+  editEmailTemplate,
 };

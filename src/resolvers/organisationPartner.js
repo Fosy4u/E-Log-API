@@ -3,6 +3,7 @@ const OrganisationPartnerModel = require("../models/organisationPartner");
 const {
   canDeleteOrEditOrganisationPartnerRemark,
 } = require("../helpers/actionPermission");
+const validator = require("email-validator");
 const path = require("path");
 const root = require("../../root");
 const { v4: uuidv4 } = require("uuid");
@@ -70,10 +71,11 @@ const deleteImageFromFirebase = async (name) => {
       .catch((err) => {
         console.log("err is", err);
         return false;
-      }).catch((err) => {
+      })
+      .catch((err) => {
         console.log("err is", err);
         return false;
-      });;
+      });
   }
 };
 
@@ -92,6 +94,10 @@ const createOrganisationPartner = async (req, res) => {
         .send({ error: "partner type must be either individual or company" });
     const exist = await OrganisationPartnerModel.findOne({ email });
     if (exist) return res.status(400).send({ error: "email already exist" });
+    if (email) {
+      if (!validator.validate(email))
+        return res.status(400).send({ error: "Invalid email address" });
+    }
     let imageUrl = {};
     let remarks = [];
     if (req.file) {
@@ -531,10 +537,13 @@ const getAllOrganisationPartners = async (req, res) => {
 
 const editOrganisationPartner = async (req, res) => {
   try {
-    console.log("start");
-    const { _id, userId } = req.body;
+    const { _id, userId, email } = req.body;
     if (!_id) return res.status(400).send({ error: "partner _id is required" });
     if (!userId) return res.status(400).send({ error: "userId is required" });
+    if (email) {
+      if (!validator.validate(email))
+        return res.status(400).send({ error: "Invalid email address" });
+    }
     const partner = await OrganisationPartnerModel.findById(_id).lean();
     if (!userId) {
       return res.status(400).json({
@@ -746,7 +755,7 @@ const restorePartners = async (contacts, userId) => {
     const result = await acc;
     const restored = await OrganisationPartnerModel.findByIdAndUpdate(
       _id,
-      { disabled: false, },
+      { disabled: false },
       { new: true }
     );
     if (restored) {

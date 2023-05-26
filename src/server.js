@@ -11,37 +11,54 @@ const url = dbConfig.url;
 
 const app = express();
 
-// app.use(express.json()); // for parsing application/json
-app.use(express.urlencoded({ extended: true }));
 
-// app.use(bodyParser.urlencoded({ extended: true }));
+// app.use(
+//   express.urlencoded({
+//     extended: true,
+//     limit: "500mb",
+//     parameterLimit: 1000000,
+//   })
+// );
+// app.use(express.json());
+//  app.use(bodyParser.text({ limit: "500mb", extended: true , parameterLimit: 1000000}));
+
 const initRoutes = require("./routes");
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
+app.use(
+  bodyParser.json({
+    extended: true,
+    limit: "500mb",
+    parameterLimit: 1000000,
+  })
+);
+app.use(
+  bodyParser.urlencoded({
+    extended: true,
+    limit: "500mb",
+    parameterLimit: 1000000,
+  })
+);
+
 var corsOptions = {
   // origin: "http://localhost:4200",
 
-  origin:
-    ENV === "dev"
-      ? "*"
-      : "*",
-      // [
-      //     "https://app.francongtech.com/:3001",
-      //     "https://elog.francongtech.com/:*",
-      //     "https://francongtech.com/:*",
-      //     "https://elog.francongtech.com/:*",
-      //     "https://app.francongtech.com/:*",
-      //     "https://dev-elog-nemfra.netlify.app/:*",
-      //     "https://www.francongtech.com/:*",
-      //     "https://www.francongtech.com/:3000",
-      //     "https://elog.francongtech.com/:3000",
-      //     "https://francongtech.com/:3000",
-      //     "https://elog.francongtech.com/:3000",
-      //     "https://app.francongtech.com/:3000",
-      //     "https://dev-elog-nemfra.netlify.app/:3000",
-      //     "https://elog.francongtech.com",
-      //     "http://localhost:3000",
-      //   ],
+  origin: ENV === "dev" ? "*" : "*",
+  // [
+  //     "https://app.francongtech.com/:3001",
+  //     "https://elog.francongtech.com/:*",
+  //     "https://francongtech.com/:*",
+  //     "https://elog.francongtech.com/:*",
+  //     "https://app.francongtech.com/:*",
+  //     "https://dev-elog-nemfra.netlify.app/:*",
+  //     "https://www.francongtech.com/:*",
+  //     "https://www.francongtech.com/:3000",
+  //     "https://elog.francongtech.com/:3000",
+  //     "https://francongtech.com/:3000",
+  //     "https://elog.francongtech.com/:3000",
+  //     "https://app.francongtech.com/:3000",
+  //     "https://dev-elog-nemfra.netlify.app/:3000",
+  //     "https://elog.francongtech.com",
+  //     "http://localhost:3000",
+  //   ],
 
   exposedHeaders: ["f-version"],
 };
