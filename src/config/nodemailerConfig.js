@@ -1,6 +1,7 @@
+
+
 module.exports = {
-    USER: 'info@nemfra.com',
-    PASS: 'FosterFranca1092010'
-    // USER: 'foster.ogwudu@yahoo.com',
-    // PASS: 'duwywdeqgpxtejxo'
+    USER: process.env.NODEMAILER_USER,
+    PASS: process.env.NODEMAILER_PASS,
+
 }
