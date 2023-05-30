@@ -105,12 +105,7 @@ const start = async () => {
         sockets[sessionId] = socket.id;
         // The sockets object is stored in Express so it can be grabbed in a route
         app.set("sockets", sockets);
-      });
-      socket.on("disconnect", (sessionId) => {
-        console.log("disconnectInit", sessionId);
-        delete sockets[sessionId];
-        app.set("sockets", sockets);
-        console.log("disconnected", sockets);
+        
       });
     });
     // The io instance is set in Express so it can be grabbed in a route
