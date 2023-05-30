@@ -55,10 +55,12 @@ const fs = require("fs");
 //   })();
 
 const generatePdf = async (param) => {
-  const { type, website_url, usePath } = param;
+  const { type, website_url, usePath, filename } = param;
 
   // Create a browser instance
-  const browser = await puppeteer.launch();
+  const browser = await puppeteer.launch({
+    headless: 'new',
+  });
 
   // Create a new page
   const page = await browser.newPage();
@@ -68,10 +70,10 @@ const generatePdf = async (param) => {
     //   const website_url = 'https://www.bannerbear.com/blog/how-to-download-images-from-a-website-using-puppeteer/';
 
     // Open URL in current page
-    console.log("url");
+   
     await page.goto(website_url, { waitUntil: "networkidle0" });
   } else if (type === "file") {
-    console.log("file");
+
     //Get HTML content from HTML file
     const html = fs.readFileSync(
       path.join(root + "/templates/index.html"),

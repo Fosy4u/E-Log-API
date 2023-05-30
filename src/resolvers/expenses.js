@@ -237,7 +237,7 @@ const attachVehicleAndVendor = async (expenses, organisationId) => {
     {
       _id: { $in: vehicleIds },
     },
-    { assignedPartnerId: 1, regNo: 1 }
+    { assignedPartnerId: 1, regNo: 1, status: 1 }
   ).lean();
   const vendorIds = expenses.map((expense) => {
     if (

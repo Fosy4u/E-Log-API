@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const ReceiptModel = require("../models/receipt");
 const OrganisationContactModel = require("../models/organisationContact");
 //const SaleModel = require("../models/sales");
 const OrganisationUserModel = require("../models/organisationUsers");

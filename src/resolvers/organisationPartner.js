@@ -496,44 +496,7 @@ const getAllOrganisationPartners = async (req, res) => {
   }
 };
 
-// const getCustomerStatement = async (req, res) => {
-//   try {
-//     const { _id } = req.query;
-//     if (!_id) return res.status(400).send("customerId is required");
-//     const combine = [];
 
-//     const receipts = await ReceiptModel.find({ customerId: _id }).lean();
-//     if (receipts?.length > 0) {
-//       combine.push(...receipts);
-//     }
-//     const addSaleDate = [];
-//     const myPromise = combine.map((sale) => {
-//       const newSale = { ...sale };
-//       newSale.date = newSale.invoiceDate || newSale.receiptDate;
-//       if (newSale?.receiptNo && !newSale.isInvoicePayment) {
-//         newSale.amountOwed = newSale.totalSellingPrice;
-//       }
-//       if (newSale?.receiptNo && newSale.isInvoicePayment) {
-//         newSale.overPayment = calcOverPaymentAmount(
-//           newSale?.linkedInvoiceList,
-//           newSale?.amountPaid
-//         );
-//       }
-//       addSaleDate.push(newSale);
-//     });
-//     await Promise.all(myPromise);
-//     const sortTransactions = addSaleDate.sort(function (a, b) {
-//       return new Date(a?.date) - new Date(b?.date);
-//     });
-//     const addBalances = await Promise.all(
-//       addOpenCloseBalance(sortTransactions)
-//     );
-
-//     res.status(200).send(addBalances);
-//   } catch (error) {
-//     return res.status(500).send(error.message);
-//   }
-// };
 
 const editOrganisationPartner = async (req, res) => {
   try {
