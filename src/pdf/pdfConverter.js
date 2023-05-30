@@ -59,7 +59,7 @@ const generatePdf = async (param) => {
 
   // Create a browser instance
   const browser = await puppeteer.launch({
-    headless: 'new',
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
 
   // Create a new page
@@ -70,10 +70,9 @@ const generatePdf = async (param) => {
     //   const website_url = 'https://www.bannerbear.com/blog/how-to-download-images-from-a-website-using-puppeteer/';
 
     // Open URL in current page
-   
+
     await page.goto(website_url, { waitUntil: "networkidle0" });
   } else if (type === "file") {
-
     //Get HTML content from HTML file
     const html = fs.readFileSync(
       path.join(root + "/templates/index.html"),
