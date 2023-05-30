@@ -2,6 +2,12 @@
 const mongoose = require("mongoose");
 const timestamp = require("mongoose-timestamp");
 
+const EmailTemplateSchema = new mongoose.Schema({
+  type: { type: String, required: true },
+  // subject: { type: String, required: true },
+  body: { type: String, required: true },
+});
+
 const TemplateSchema = new mongoose.Schema({
   disabled: { type: Boolean, default: false },
   organisationId: { type: String, required: true },
@@ -153,6 +159,8 @@ const TemplateSchema = new mongoose.Schema({
       },
     ],
   },
+  emailTemplates : [EmailTemplateSchema],
+
   expenseType: {
     type: Array,
     default: [

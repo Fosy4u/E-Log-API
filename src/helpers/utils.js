@@ -78,6 +78,9 @@ const getName = (contact) => {
   if (contact?.lastName) return contact?.lastName;
   return null;
 };
+function onlyUnique(value, index, array) {
+  return array.indexOf(value) === index;
+}
 
 module.exports = {
   deleteLocalFile,
@@ -85,4 +88,5 @@ module.exports = {
   getPaidAndAmountDue,
   getPaidAndAmountDueExcludeInvoicePayment,
   getName,
+  onlyUnique,
 };

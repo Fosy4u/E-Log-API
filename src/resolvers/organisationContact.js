@@ -3,6 +3,7 @@ const OrganisationUserModel = require("../models/organisationUsers");
 const VendorAgentModel = require("../models/vendorAgent");
 const CustomerModel = require("../models/customer");
 const OrganisationPartnerModel = require("../models/organisationPartner");
+const validator = require("email-validator");
 
 const createOrganisationContact = async (req, res) => {
   const { organisationId, firstName, lastName, email } = req.body;
@@ -15,8 +16,13 @@ const createOrganisationContact = async (req, res) => {
       return res.status(400).send({ error: "lastName is required" });
     if (!email) return res.status(400).send({ error: "email is required" });
     const exist = await OrganisationContactModel.findOne({ email });
-    if (!exist) {
+
+    if (exist) {
       return res.status(400).send({ error: "email already exist" });
+    }
+    if (email) {
+      if (!validator.validate(email))
+        return res.status(400).send({ error: "Invalid email address" });
     }
 
     const params = {
@@ -66,6 +72,10 @@ const getAllOrganisationContacts = async (req, res) => {
       { organisationId },
       { firstName: 1, lastName: 1, email: 1 }
     ).lean();
+    const users = await OrganisationUserModel.find(
+      { organisationId },
+      { firstName: 1, lastName: 1, email: 1 }
+    ).lean();
     const allContacts = [];
     vendors.forEach((vendor) => {
       vendor.type = "vendor";
@@ -87,6 +97,11 @@ const getAllOrganisationContacts = async (req, res) => {
       other.name = `${other.firstName} ${other.lastName}`;
       allContacts.push(other);
     });
+    users.forEach((user) => {
+      user.type = "user";
+      user.name = `${user.firstName} ${user.lastName}`;
+      if (user.email) allContacts.push(user);
+    });
     return res.status(200).send({ data: allContacts });
   } catch (error) {
     return res.status(500).send({ error: error.message });
@@ -95,8 +110,12 @@ const getAllOrganisationContacts = async (req, res) => {
 
 const editOrganisationContact = async (req, res) => {
   try {
-    const { _id } = req.body;
+    const { _id, email } = req.body;
     if (!_id) return res.status(400).send({ error: "contact_id is required" });
+    if (email) {
+      if (!validator.validate(email))
+        return res.status(400).send({ error: "Invalid email address" });
+    }
     const update = await OrganisationContactModel.findByIdAndUpdate(
       _id,
       { ...req.body },

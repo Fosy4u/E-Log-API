@@ -9,6 +9,7 @@ const {
   canDeleteOrEditOrganisationVendorAgentRemark,
 } = require("../helpers/actionPermission");
 const mongoose = require("mongoose");
+const validator = require("email-validator");
 
 //generate random color
 const generateColor = async (organisationId) => {
@@ -40,12 +41,16 @@ const generateColor = async (organisationId) => {
 };
 
 const createVendorAgent = async (req, res) => {
-  const { organisationId, userId, remark } = req.body;
-  console.log("reqqq", req.body);
+  const { organisationId, userId, remark, email } = req.body;
+
   try {
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
     if (!userId) return res.status(400).send({ error: "userId is required" });
+    if (email) {
+      if (!validator.validate(email))
+        return res.status(400).send({ error: "Invalid email address" });
+    }
     const validUserId = await verifyUserId(userId, organisationId);
     if (!validUserId) {
       return res
@@ -124,7 +129,7 @@ const getAllVendorAgents = async (req, res) => {
 const editVendorAgent = async (req, res) => {
   try {
     let vendorAgent;
-    const { vendorAgentId, organisationId, userId, remark } = req.body;
+    const { vendorAgentId, organisationId, userId, remark, email } = req.body;
     if (!vendorAgentId)
       return res.status(400).send({ error: "vendorAgentId is required" });
     if (!organisationId)
@@ -135,6 +140,10 @@ const editVendorAgent = async (req, res) => {
       return res
         .status(400)
         .send({ error: "userId is invalid for this organisation" });
+    }
+    if (email) {
+      if (!validator.validate(email))
+        return res.status(400).send({ error: "Invalid email address" });
     }
     if (remark) {
       const remarkObj = {

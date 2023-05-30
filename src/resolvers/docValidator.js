@@ -6,7 +6,6 @@ const mongoose = require("mongoose");
 const PaymentModel = require("../models/payment");
 const OrganisationProfileModel = require("../models/organisationProfile");
 
-
 const attachProperties = async (payments) => {
   const vendorIds = payments.map((payment) => {
     if (payment.vendorId && payment.vendorId !== "") {
@@ -321,7 +320,66 @@ const getDoc = async (req, res) => {
     return res.status(500).send({ error: error.message });
   }
 };
+const getDownloadDoc = async (req, res) => {
+  try {
+    const { docId } = req.query;
+    console.log("docId is", docId);
+
+    if (!docId) {
+      return res.status(400).send({
+        error:
+          "Invalid Doc. Please ensure url is correct. If you are still having issues, please contact your issuer.",
+      });
+    }
+    let type;
+    let data;
+    let organisationId;
+    let invoice;
+    let payment;
+
+    invoice = await InvoiceModel.findOne({
+      invoiceId: docId,
+    }).lean();
+    if (invoice) {
+      const formattedInvoice = await formatInvoice(invoice);
+      type = "invoice";
+      data = formattedInvoice;
+      organisationId = invoice?.organisationId;
+    }
+    if (!invoice) {
+      payment = await PaymentModel.findOne({
+        paymentId: docId,
+      }).lean();
+      if (payment) {
+        organisationId = payment?.organisationId;
+        type = "receipt";
+        const propertiesAttached = await attachProperties(
+          [payment],
+          organisationId
+        );
+        data = propertiesAttached[0];
+      }
+    }
+    if (!invoice && !payment) {
+      console.log("no invoice or payment");
+      return res.status(400).send({
+        error:
+          "error getting document. Please ensure url is correct. If you are still having issues, please contact your issuer.",
+      });
+    }
+    const organisationProfile = await OrganisationProfileModel.findById(
+      organisationId
+    ).lean();
+
+    return res
+      .status(200)
+      .send({ data, type, organisation: organisationProfile });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
 
 module.exports = {
   getDoc,
+  getDownloadDoc,
 };

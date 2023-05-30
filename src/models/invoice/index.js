@@ -2,6 +2,12 @@
 const mongoose = require("mongoose");
 const timestamp = require("mongoose-timestamp");
 
+const ReceivedEmailsSchema = new mongoose.Schema({
+  email: { type: String, required: true },
+  date: { type: Date, required: true },
+  docAttached: { type: Boolean, default: false },
+});
+
 const InvoiceSchema = new mongoose.Schema({
   organisationId: { type: String, required: true },
   invoiceId: { type: String, required: true },
@@ -34,6 +40,7 @@ const InvoiceSchema = new mongoose.Schema({
     required: false,
   },
   sentToCustomer: { type: Boolean, default: false },
+  receivedEmails: { type: [ReceivedEmailsSchema] },
   logs: [
     {
       date: Date,

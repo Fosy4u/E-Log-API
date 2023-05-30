@@ -11,7 +11,6 @@ const SocialSchema = new mongoose.Schema({
 
 const OrganisationContactSchema = new mongoose.Schema({
   organisationId: { type: String, required: true },
-  contactType: { type: String, required: true },
   salutation: { type: String, required: false },
   status: { type: String, default: "active" },
   firstName: { type: String, required: false },
@@ -30,7 +29,6 @@ const OrganisationContactSchema = new mongoose.Schema({
     required: false,
   },
   localGovernmentArea: { type: String, required: false },
-  createdBy: { type: String, required: true },
   social: SocialSchema,
 
 });
