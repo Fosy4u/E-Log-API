@@ -68,9 +68,12 @@ const sendEmail = async (req, res) => {
     // Get the socket connection from Express app
     const io = req.app.get("io");
     const sockets = req.app.get("sockets");
+    console.log("sockets", sockets);
 
     const thisSocketId = sockets[socketId];
+    console.log("thisSocketId", thisSocketId);
     const socketInstance = io.to(thisSocketId);
+    console.log("socketInstance", socketInstance);
     // Emit the event to the client
     socketInstance.emit("emailProgress", {
       progress: 0,

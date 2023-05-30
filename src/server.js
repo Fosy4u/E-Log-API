@@ -108,6 +108,7 @@ const start = async () => {
     });
     // The io instance is set in Express so it can be grabbed in a route
     app.set("io", io);
+    app.set("sockets", sockets);
   } catch (error) {
     console.error(new Date(), "Error Starting Server::", error);
   }
