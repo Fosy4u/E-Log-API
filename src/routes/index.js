@@ -22,6 +22,7 @@ const tyreRepairResolver = require("../resolvers/tyreRepair");
 const reportResolver = require("../resolvers/report");
 const docValidatorResolver = require("../resolvers/docValidator");
 const sendEmailResolver = require("../resolvers/emailer");
+const downloaderResolver = require("../resolvers/downloader");
 
 let routes = (app) => {
   router.get("/", homeResolver.getHome);
@@ -29,6 +30,7 @@ let routes = (app) => {
 
   //Emailer
   router.post("/emailer/sendEmail", authMiddleware, sendEmailResolver.sendEmail);
+  router.post("/downloader", authMiddleware, downloaderResolver.downloadDoc);
 
   //DocValidator
   router.get("/francong/validateDoc", docValidatorResolver.getDoc);
