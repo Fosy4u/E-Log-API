@@ -73,7 +73,7 @@ const sendEmail = async (req, res) => {
     const thisSocketId = sockets[socketId];
     console.log("thisSocketId", thisSocketId);
     const socketInstance = io.to(thisSocketId);
-    console.log("socketInstance", socketInstance);
+
     // Emit the event to the client
     socketInstance.emit("emailProgress", {
       progress: 0,
