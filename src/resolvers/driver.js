@@ -107,7 +107,7 @@ const createDriver = async (req, res) => {
         const log = {
           date: new Date(),
           userId: userId,
-          action: "create",
+          action: "added",
           details: `Driver - ${newContact.firstName} ${newContact.lastName} created`,
           reason: `added new driver`,
         };
@@ -138,7 +138,7 @@ const createDriver = async (req, res) => {
         const log = {
           date: new Date(),
           userId: userId,
-          action: "create",
+          action: "added",
           details: `Driver - ${savedDriver.firstName} ${savedDriver.lastName} created`,
           reason: `added new driver`,
         };

@@ -65,7 +65,7 @@ const createCustomer = async (req, res) => {
     const log = {
       date: new Date(),
       userId: userId,
-      action: "create",
+      action: "added",
       details: `customer created`,
       reason: `added new customer`,
     };

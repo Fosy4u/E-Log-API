@@ -18,23 +18,36 @@ const templateResolver = require("../resolvers/template");
 const paymentResolver = require("../resolvers/payment");
 const invoiceResolver = require("../resolvers/invoice");
 const tyreResolver = require("../resolvers/tyre");
+const toolResolver = require("../resolvers/tool");
 const tyreRepairResolver = require("../resolvers/tyreRepair");
+const toolRepairResolver = require("../resolvers/toolRepair");
 const reportResolver = require("../resolvers/report");
 const docValidatorResolver = require("../resolvers/docValidator");
 const sendEmailResolver = require("../resolvers/emailer");
 const downloaderResolver = require("../resolvers/downloader");
 
+const handleMoreFieldsUploads = uploadMultiple.fields([
+  { name: "documents", maxCount: 5 },
+  { name: "pictures", maxCount: 5 },
+]);
+
 let routes = (app) => {
   router.get("/", homeResolver.getHome);
 
-
   //Emailer
-  router.post("/emailer/sendEmail", authMiddleware, sendEmailResolver.sendEmail);
+  router.post(
+    "/emailer/sendEmail",
+    authMiddleware,
+    sendEmailResolver.sendEmail
+  );
   router.post("/downloader", authMiddleware, downloaderResolver.downloadDoc);
 
   //DocValidator
   router.get("/francong/validateDoc", docValidatorResolver.getDoc);
-  router.get("/francong/validateDoc/nemfrancongokpatu2010api", docValidatorResolver.getDownloadDoc);
+  router.get(
+    "/francong/validateDoc/nemfrancongokpatu2010api",
+    docValidatorResolver.getDownloadDoc
+  );
 
   //OgranisationProfile
   router.post(
@@ -394,10 +407,7 @@ let routes = (app) => {
   router.put("/trip/editRemark", authMiddleware, tripResolver.editTripRemark);
 
   //Expenses
-  const handleMoreFieldsUploads = uploadMultiple.fields([
-    { name: "documents", maxCount: 5 },
-    { name: "pictures", maxCount: 5 },
-  ]);
+
   router.post(
     "/expenses/create",
     authMiddleware,
@@ -656,6 +666,104 @@ let routes = (app) => {
     authMiddleware,
     tyreRepairResolver.deleteTyreRepair
   );
+  //ToolRepair
+  router.post(
+    "/toolRepair/create",
+    authMiddleware,
+    toolRepairResolver.createToolRepair
+  );
+  router.get("/toolRepairs", authMiddleware, toolRepairResolver.getToolRepairs);
+  router.get(
+    "/toolRepairs/tool",
+    authMiddleware,
+    toolRepairResolver.getToolRepairsByTool
+  );
+  router.get(
+    "/toolRepairs/vehicleId",
+    authMiddleware,
+    toolRepairResolver.getToolRepairsByVehicleID
+  );
+  router.get("/toolRepair", authMiddleware, toolRepairResolver.getToolRepair);
+  router.put(
+    "/toolRepair/edit",
+    authMiddleware,
+    toolRepairResolver.updateToolRepair
+  );
+  router.delete(
+    "/toolRepair/delete",
+    authMiddleware,
+    toolRepairResolver.deleteToolRepair
+  );
+
+  //Tool
+  router.post(
+    "/tool/create",
+    authMiddleware,
+    handleMoreFieldsUploads,
+    toolResolver.createTool
+  );
+  router.post(
+    "/tool/uploads",
+    authMiddleware,
+    handleMoreFieldsUploads,
+    toolResolver.uploadToolImages
+  );
+  router.get("/tools", authMiddleware, toolResolver.getTools);
+  router.get("/tools/params", authMiddleware, toolResolver.getToolsByParams);
+  router.get(
+    "/tools/vehicleId",
+    authMiddleware,
+    toolResolver.getToolsByVehicleId
+  );
+  router.get(
+    "/tools/inspection/vehicleId",
+    authMiddleware,
+    toolResolver.getToolInspectionByVehicleId
+  );
+  router.get(
+    "/tools/inspections/",
+    authMiddleware,
+    toolResolver.getToolInspections
+  );
+  router.get(
+    "/tools/inspection/",
+    authMiddleware,
+    toolResolver.getToolInspection
+  );
+  router.get("/tool", authMiddleware, toolResolver.getTool);
+  router.get("/tool/expenses", authMiddleware, toolResolver.getToolExpenses);
+  router.get("/tool/remarks", authMiddleware, toolResolver.getToolRemarks);
+  router.get("/tool/logs", authMiddleware, toolResolver.getToolLogs);
+  router.put(
+    "/tool/edit",
+    authMiddleware,
+    handleMoreFieldsUploads,
+    toolResolver.updateTool
+  );
+  router.put(
+    "/tool/inspection/edit",
+    authMiddleware,
+    toolResolver.updateToolInspection
+  );
+  router.put("/tool/delete", authMiddleware, toolResolver.deleteTools);
+  router.put(
+    "/tool/inspections/delete",
+    authMiddleware,
+    toolResolver.deleteToolInspections
+  );
+  router.put("/tool/restore", authMiddleware, toolResolver.restoreTools);
+  router.put(
+    "/tool/inspections/restore",
+    authMiddleware,
+    toolResolver.restoreToolInspections
+  );
+  router.put("/tool/addRemark", authMiddleware, toolResolver.addToolRemark);
+  router.put(
+    "/tool/deleteRemark",
+    authMiddleware,
+    toolResolver.deleteToolRemark
+  );
+  router.put("/tool/editRemark", authMiddleware, toolResolver.editToolRemark);
 
   //Template
   router.get("/template", templateResolver.getTemplate);
@@ -665,8 +773,11 @@ let routes = (app) => {
   router.put("/template/addTyreSize", templateResolver.addTyreSize);
   router.put("/template/deleteTyreSize", templateResolver.deleteTyreSize);
   router.put("/template/editTyreSize", templateResolver.editTyreSize);
-  router.put("/template/addEmailTemplate", templateResolver. addEmailTemplate);
-  router.put( "/template/deleteEmailTemplate", templateResolver.deleteEmailTemplate);
+  router.put("/template/addEmailTemplate", templateResolver.addEmailTemplate);
+  router.put(
+    "/template/deleteEmailTemplate",
+    templateResolver.deleteEmailTemplate
+  );
   router.put("/template/editEmailTemplate", templateResolver.editEmailTemplate);
 
   //report
@@ -782,7 +893,6 @@ let routes = (app) => {
     authMiddleware,
     organisationContactResolver.deleteOrganisationContact
   );
- 
 
   return app.use("/", router);
 };

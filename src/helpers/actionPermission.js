@@ -7,6 +7,7 @@ const ExpensesModel = require("../models/expenses");
 const PaymentModel = require("../models/payment");
 const InvoiceModel = require("../models/invoice");
 const TyreModel = require("../models/tyre");
+const ToolModel = require("../models/tool");
 const TruckModel = require("../models/truck");
 
 const canDeleteOrEditOrganisationPartnerRemark = async (param) => {
@@ -293,6 +294,52 @@ const canEditOrganisationInvoice = async (param) => {
   return canPerformAction;
 };
 
+
+const canDeleteOrEditOrganisationToolRemark = async (param) => {
+  const { toolId, remarkId, userId } = param;
+  let canPerformAction = false;
+  const tool = await ToolModel.findOne({
+    _id: toolId,
+  });
+
+  if (tool?.remarks?.length > 0) {
+    const remark = tool.remarks.find(
+      (remark) => remark._id.toString() === remarkId
+    );
+    console.log(remark);
+    if (remark) {
+      canPerformAction = remark.userId.toString() === userId;
+    }
+  }
+  return canPerformAction;
+};
+const canEditOrganisationTool = async (param) => {
+  const { tyreId, userId } = param;
+  let canPerformAction = false;
+  const tyre = await ToolModel.findOne({
+    _id: tyreId,
+  });
+  const organisationId = tyre?.organisationId;
+  const user = await OrganisationUserModel.findOne({
+    _id: userId,
+    organisationId,
+  });
+  if (user) {
+    canPerformAction = true;
+  }
+  return canPerformAction;
+};
+const canCreateOrganisationTool = async (param) => {
+  const { organisationId, userId } = param;
+
+  let canPerformAction = false;
+  const user = await OrganisationUserModel.findOne({ _id: userId });
+  if (user?.organisationId.toString() === organisationId) {
+    canPerformAction = true;
+  }
+  return canPerformAction;
+};
+
 module.exports = {
   canDeleteOrEditOrganisationPartnerRemark,
   canDeleteOrEditOrganisationCustomerRemark,
@@ -312,4 +359,8 @@ module.exports = {
   canEditOrganisationTyre,
   canCreateOrganisationTyre,
   canDeleteOrEditOrganisationTruckRemark,
+  canDeleteOrEditOrganisationToolRemark,
+  canEditOrganisationTool,
+  canCreateOrganisationTool,
+
 };

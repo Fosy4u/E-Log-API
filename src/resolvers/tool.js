@@ -1,15 +1,70 @@
-const TyreModel = require("../models/tyre");
-const VendorAgentModel = require("../models/vendorAgent");
+const ToolModel = require("../models/tool");
 const TruckModel = require("../models/truck");
-const TripModel = require("../models/trip");
-const TyreInspectionModel = require("../models/tyreInspection");
+const ToolRepairModel = require("../models/toolRepair");
+const ExpensesModel = require("../models/expenses");
+const ToolInspectionModel = require("../models/tyreInspection");
 const OrganisationUserModel = require("../models/organisationUsers");
 const mongoose = require("mongoose");
+const { storageRef } = require("../config/firebase"); // reference to our db
+const root = require("../../root");
+const path = require("path");
+const { v4: uuidv4 } = require("uuid");
+const sharp = require("sharp");
 const {
-  canDeleteOrEditOrganisationTyreRemark,
-  canEditOrganisationTyre,
-  canCreateOrganisationTyre,
+  canDeleteOrEditOrganisationToolRemark,
+  canEditOrganisationTool,
+  canCreateOrganisationTool,
 } = require("../helpers/actionPermission");
+const { deleteLocalFile } = require("../helpers/utils");
+
+//saving image to firebase storage
+const addImage = async (destination, filename) => {
+  let url = {};
+  if (filename) {
+    const source = path.join(root + "/uploads/" + filename);
+    await sharp(source)
+      .resize(1024, 1024)
+      .jpeg({ quality: 100 })
+      .toFile(path.resolve(destination, "resized", filename));
+    const storage = await storageRef.upload(
+      path.resolve(destination, "resized", filename),
+      {
+        public: true,
+        destination: `/tools/${filename}`,
+        metadata: {
+          firebaseStorageDownloadTokens: uuidv4(),
+        },
+      }
+    );
+    url = { link: storage[0].metadata.mediaLink, name: filename };
+    const deleteSourceFile = await deleteLocalFile(source);
+    const deleteResizedFile = await deleteLocalFile(
+      path.resolve(destination, "resized", filename)
+    );
+    await Promise.all([deleteSourceFile, deleteResizedFile]);
+    return url;
+  }
+  return url;
+};
+
+const deleteImageFromFirebase = async (name) => {
+  if (name) {
+    storageRef
+      .file("/expenses/" + name)
+      .delete()
+      .then(() => {
+        return true;
+      })
+      .catch((err) => {
+        console.log("err is", err);
+        return false;
+      })
+      .catch((err) => {
+        console.log("err is", err);
+        return false;
+      });
+  }
+};
 
 const getName = (contact) => {
   if (!contact) return null;
@@ -29,7 +84,7 @@ const generateUniqueCode = async (organisationId) => {
   do {
     const randomVal = getRandomInt(1000000, 9999999);
     code = `${randomVal}`;
-    const exist = await TyreInspectionModel.findOne(
+    const exist = await ToolInspectionModel.findOne(
       {
         organisationId,
         inspectionId: code,
@@ -46,19 +101,33 @@ const generateUniqueCode = async (organisationId) => {
 
   return code.toString();
 };
+const handleImageUpload = async (files) => {
+  const newDocuments = [];
+  const newPictures = [];
+  if (files) {
+    for (let i = 0; i < files?.length; i++) {
+      const file = files[i];
 
-const createTyre = async (req, res) => {
-  const {
-    organisationId,
-    purchaseDate,
-    estimatedReplacementDate,
-    userId,
-    serialNo,
-    remark,
-    vehicleId,
-    size,
-    status,
-  } = req.body;
+      const filename = file.filename;
+      const fieldname = file.fieldname;
+      const destination = file.destination;
+
+      const url = await addImage(destination, filename);
+
+      if (fieldname === "documents") {
+        newDocuments.push(url);
+      }
+      if (fieldname === "pictures") {
+        newPictures.push(url);
+      }
+    }
+  }
+
+  return { newDocuments, newPictures };
+};
+
+const createTool = async (req, res) => {
+  const { organisationId, userId, remark, vehicleId, status, name } = req.body;
 
   try {
     if (!organisationId) {
@@ -66,62 +135,28 @@ const createTyre = async (req, res) => {
         error: "Please provide organisation id",
       });
     }
-    if (!purchaseDate)
-      return res.status(400).json({ error: "Please provide purchase date" });
-    if (!estimatedReplacementDate)
-      return res
-        .status(400)
-        .json({ error: "Please provide estimated replacement date" });
-    if (!size)
-      return res.status(400).json({ error: "Please provide tyre size" });
+    if (!name)
+      return res.status(400).json({ error: "Please provide tool name" });
+
     if (!status)
       return res.status(400).json({ error: "Please provide status" });
-
-    if (!vehicleId)
-      return res
-        .status(400)
-        .json({ error: "Please provide vehicle that the tire belongs to" });
 
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-    if (!serialNo)
-      return res.status(400).json({ error: "Please provide serial number" });
 
-    const existed = await TyreModel.findOne(
-      { organisationId, serialNo },
-      { lean: true }
-    );
-    if (existed) {
-      return res.status(400).json({ error: "Serial number already exist" });
-    }
-    const assignedTruck = await TruckModel.findOne({
+    const assignedVehicle = await TruckModel.findOne({
       _id: vehicleId,
       organisationId,
     });
-    if (!assignedTruck)
-      return res.status(400).json({ error: "Assigned Truck not found" });
+    if (!assignedVehicle)
+      return res
+        .status(400)
+        .json({ error: "Vehicle to be assigned not found" });
 
-    if (status === "Active") {
-      const tyreCount = assignedTruck?.tyreCount;
-      const activeTruckTyres = await TyreModel.find(
-        {
-          vehicleId: vehicleId,
-          organisationId,
-          disabled: false,
-          status: "Active",
-        },
-        { _id: 1 }
-      ).lean();
-
-      if (activeTruckTyres.length >= tyreCount)
-        return res.status(400).json({
-          error: `Total active tyres for this truck is already reached : ${tyreCount}`,
-        });
-    }
     const param = { organisationId, userId };
-    const canPerformAction = await canCreateOrganisationTyre(param);
+    const canPerformAction = await canCreateOrganisationTool(param);
     if (!canPerformAction)
       return res.status(400).send({
         error: "you dont have the permission to carry out this request",
@@ -131,8 +166,8 @@ const createTyre = async (req, res) => {
       date: new Date(),
       userId: userId,
       action: "added",
-      details: `Tyre -  created`,
-      reason: `added new tyre`,
+      details: `Tool -  created`,
+      reason: `added new tool`,
     };
     let remarks = [];
 
@@ -143,21 +178,24 @@ const createTyre = async (req, res) => {
         date: new Date(),
       });
     }
-    const trips = [];
-    if (assignedTruck?.status === "On Trip" && status === "Active") {
-      const trip = await TripModel.findOne(
-        {
-          vehicleId: assignedTruck._id,
-          organisationId,
-          disabled: false,
-          isCompleted: false,
-        },
-        { _id: 1 }
-      );
-      if (trip) {
-        trips.push(trip._id);
-      }
+    let documents = [];
+    let pictures = [];
+    const uploadedPictures = req.files?.pictures || [];
+    const uploadedDocuments = req.files?.documents || [];
+    if (req.files) {
+      const upload = await handleImageUpload([
+        ...uploadedPictures,
+        ...uploadedDocuments,
+      ]);
+
+      const docs = await Promise.all([upload]);
+
+      const { newDocuments, newPictures } = docs[0];
+
+      documents = newDocuments || [];
+      pictures = newPictures || [];
     }
+
     let params;
     const statusList = [
       {
@@ -175,20 +213,24 @@ const createTyre = async (req, res) => {
       ...req.body,
       logs: [log],
       remarks,
-      trips,
       statusList,
+      ...(documents.length > 0 && { documents }),
+      ...(pictures.length > 0 && { pictures }),
     };
+    if (pictures.length === 0) {
+      return res.status(400).json({ error: "Please provide pictures" });
+    }
 
-    const newTyres = new TyreModel({
+    const newTools = new ToolModel({
       ...params,
     });
-    const saveTyres = await newTyres.save();
-    if (!saveTyres)
-      return res.status(401).json({ error: "Internal in saving tyres" });
+    const saveTools = await newTools.save();
+    if (!saveTools)
+      return res.status(401).json({ error: "Internal in saving tools" });
 
     return res
       .status(200)
-      .send({ message: "Tyres created successfully", data: saveTyres });
+      .send({ message: "Tools created successfully", data: saveTools });
   } catch (error) {
     console.log(error);
     return res.status(500).json({
@@ -196,131 +238,11 @@ const createTyre = async (req, res) => {
     });
   }
 };
-const recordTyreInspection = async (req, res) => {
-  const { organisationId, userId, remark, vehicleId, details, date } = req.body;
 
-  try {
-    if (!organisationId) {
-      return res.status(400).json({
-        error: "Please provide organisation id",
-      });
-    }
-
-    if (!vehicleId)
-      return res
-        .status(400)
-        .json({ error: "Please provide vehicle that the tire belongs to" });
-
-    if (!userId)
-      return res
-        .status(400)
-        .json({ error: "Please provide logged in user id" });
-    if (!details || details.length === 0)
-      return res.status(400).json({ error: "Please provide details" });
-    if (!date)
-      return res.status(400).json({ error: "Please provide inspection date" });
-    const vehicle = await TruckModel.findById({ _id: vehicleId });
-    if (!vehicle)
-      return res.status(400).json({ error: "Vehicle does not exist" });
-
-    let detailIsvaild = true;
-    const verifyDetails = details.forEach(async (detail) => {
-      const {
-        serialNo,
-        scratchType,
-        tyreHealthCheckRating,
-        inflationPercentage,
-        bulge,
-      } = detail;
-      if (!serialNo || !scratchType || !tyreHealthCheckRating) {
-        detailIsvaild = false;
-      }
-      const tyre = await TyreModel.findOne({
-        organisationId,
-        serialNo,
-        vehicleId,
-      });
-
-      if (!tyre) {
-        detailIsvaild = false;
-        console.log("reached here 0.1", tyre);
-      }
-    });
-    await Promise.resolve(verifyDetails);
-    console.log("reached here 1");
-    if (!detailIsvaild)
-      return res.status(400).json({
-        error:
-          "Invalid details. Ensure all required values are provided and that all the tyes belong to the selected vehicle ID",
-      });
-
-    const param = { organisationId, userId };
-
-    const canPerformAction = await canCreateOrganisationTyre(param);
-    if (!canPerformAction)
-      return res.status(400).send({
-        error: "you dont have the permission to carry out this request",
-      });
-
-    const log = {
-      date: new Date(),
-      userId: userId,
-      action: "added",
-      details: `Tyre - Inspection -  recorded`,
-      reason: `recorded tyre inspection`,
-    };
-    let remarks = [];
-
-    if (remark) {
-      remarks.push({
-        remark,
-        userId,
-        date: new Date(),
-      });
-    }
-    let params;
-    const inspectionId = await generateUniqueCode(organisationId);
-
-    params = {
-      ...req.body,
-      inspectionId,
-      logs: [log],
-      remarks,
-    };
-
-    const newTyreInspections = new TyreInspectionModel({
-      ...params,
-    });
-    const saveTyreInspections = await newTyreInspections.save();
-    if (!saveTyreInspections)
-      return res.status(401).json({ error: "Internal in saving tyres" });
-
-    return res.status(200).send({
-      message: "Tyres created successfully",
-      data: saveTyreInspections,
-    });
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json({
-      message: "Internal server error",
-    });
-  }
-};
-const attachTrip = async (tyre) => {
-  const { trips } = tyre;
-  const matchedTrips = await TripModel.find({
-    _id: { $in: trips },
-  }).lean();
-  return {
-    ...tyre,
-    trips: matchedTrips,
-  };
-};
-
-const attachVehicle = async (tyres, organisationId) => {
-  const vehicleIds = tyres.map((tyre) => {
-    if (tyre.vehicleId && tyre.vehicleId !== "") {
-      return tyre.vehicleId;
+const attachVehicle = async (tools, organisationId) => {
+  const vehicleIds = tools.map((tool) => {
+    if (tool.vehicleId && tool.vehicleId !== "") {
+      return tool.vehicleId;
     } else {
       return null;
     }
@@ -330,18 +252,18 @@ const attachVehicle = async (tyres, organisationId) => {
     _id: { $in: vehicleIds },
   }).lean();
 
-  const tyresWithVehicle = tyres.map((tyre) => {
-    const vehicle = vehicles.find((vehicle) => vehicle._id == tyre.vehicleId);
+  const toolsWithVehicle = tools.map((tool) => {
+    const vehicle = vehicles.find((vehicle) => vehicle._id == tool.vehicleId);
 
     return {
-      ...tyre,
+      ...tool,
       vehicle: vehicle,
     };
   });
-  return tyresWithVehicle;
+  return toolsWithVehicle;
 };
 
-const getTyres = async (req, res) => {
+const getTools = async (req, res) => {
   const { organisationId, disabled } = req.query;
   try {
     if (!organisationId) {
@@ -349,19 +271,17 @@ const getTyres = async (req, res) => {
         error: "Please provide organisation id",
       });
     }
-    const tyres = await TyreModel.find({
+    const tools = await ToolModel.find({
       organisationId,
       disabled: disabled ? disabled : false,
     }).lean();
-    if (!tyres)
-      return res.status(401).json({ error: "Internal error in getting tyres" });
 
-    const tyresWithVehicle = await attachVehicle(tyres, organisationId);
+    const toolsWithVehicle = await attachVehicle(tools, organisationId);
 
     return res.status(200).send({
-      message: "Tyres fetched successfully",
-      data: tyresWithVehicle.sort(function (a, b) {
-        return new Date(b?.purchaseDate) - new Date(a?.purchaseDate);
+      message: "Tools fetched successfully",
+      data: toolsWithVehicle.sort(function (a, b) {
+        return new Date(b?.toolId) - new Date(a?.toolId);
       }),
     });
   } catch (error) {
@@ -371,7 +291,7 @@ const getTyres = async (req, res) => {
     });
   }
 };
-const getTyresByParams = async (req, res) => {
+const getToolsByParams = async (req, res) => {
   const { organisationId, disabled } = req.query;
 
   try {
@@ -381,19 +301,19 @@ const getTyresByParams = async (req, res) => {
       });
     }
 
-    const tyres = await TyreModel.find({
+    const tools = await ToolModel.find({
       organisationId,
       disabled: disabled ? disabled : false,
       ...req.query,
     }).lean();
-    if (!tyres) return res.status(200).json({ data: [] });
+    if (!tools) return res.status(200).json({ data: [] });
 
-    const tyresWithVehicle = await attachVehicle(tyres, organisationId);
+    const toolsWithVehicle = await attachVehicle(tools, organisationId);
 
     return res.status(200).send({
-      message: "Tyre Inspections fetched successfully",
-      data: tyresWithVehicle.sort(function (a, b) {
-        return new Date(b?.purchaseDate) - new Date(a?.purchaseDate);
+      message: "Tool fetched successfully",
+      data: toolsWithVehicle.sort(function (a, b) {
+        return new Date(b?.toolId) - new Date(a?.toolId);
       }),
     });
   } catch (error) {
@@ -403,7 +323,7 @@ const getTyresByParams = async (req, res) => {
     });
   }
 };
-const getTyreInspections = async (req, res) => {
+const getToolInspections = async (req, res) => {
   const { organisationId, disabled } = req.query;
   try {
     if (!organisationId) {
@@ -411,14 +331,14 @@ const getTyreInspections = async (req, res) => {
         error: "Please provide organisation id",
       });
     }
-    const tyreInspections = await TyreInspectionModel.find({
+    const tyreInspections = await ToolInspectionModel.find({
       organisationId,
       disabled: disabled ? disabled : false,
     }).lean();
     if (!tyreInspections)
       return res
         .status(401)
-        .json({ error: "Internal error in getting tyre Inspections" });
+        .json({ error: "Internal error in getting tool Inspections" });
 
     const tyreInspectionsWithVehicle = await attachVehicle(
       tyreInspections,
@@ -426,7 +346,7 @@ const getTyreInspections = async (req, res) => {
     );
 
     return res.status(200).send({
-      message: "Tyres fetched successfully",
+      message: "Tool Inspections fetched successfully",
       data: tyreInspectionsWithVehicle.sort(function (a, b) {
         return new Date(b?.date) - new Date(a?.date);
       }),
@@ -438,7 +358,7 @@ const getTyreInspections = async (req, res) => {
     });
   }
 };
-const getTyresByVehicleId = async (req, res) => {
+const getToolsByVehicleId = async (req, res) => {
   const { organisationId, disabled, vehicleId } = req.query;
   try {
     if (!organisationId) {
@@ -449,18 +369,18 @@ const getTyresByVehicleId = async (req, res) => {
     if (!vehicleId)
       return res.status(400).json({ error: "Please provide vehicle id" });
 
-    const tyres = await TyreModel.find({
+    const tools = await ToolModel.find({
       organisationId,
       vehicleId,
       disabled: disabled ? disabled : false,
     }).lean();
-    if (!tyres)
-      return res.status(401).json({ error: "Internal error in getting tyres" });
+    if (!tools)
+      return res.status(401).json({ error: "Internal error in getting tools" });
 
     return res.status(200).send({
-      message: "Tyres fetched successfully",
-      data: tyres.sort(function (a, b) {
-        return new Date(b?.purchaseDate) - new Date(a?.purchaseDate);
+      message: "Tools fetched successfully",
+      data: tools.sort(function (a, b) {
+        return new Date(b?.toolId) - new Date(a?.toolId);
       }),
     });
   } catch (error) {
@@ -470,7 +390,7 @@ const getTyresByVehicleId = async (req, res) => {
     });
   }
 };
-const getTyreInspectionByVehicleId = async (req, res) => {
+const getToolInspectionByVehicleId = async (req, res) => {
   const { organisationId, disabled, vehicleId } = req.query;
   try {
     if (!organisationId) {
@@ -480,7 +400,7 @@ const getTyreInspectionByVehicleId = async (req, res) => {
     }
     if (!vehicleId)
       return res.status(400).json({ error: "Please provide vehicle id" });
-    const inspections = await TyreInspectionModel.find({
+    const inspections = await ToolInspectionModel.find({
       organisationId,
       vehicleId,
       disabled: disabled ? disabled : false,
@@ -505,16 +425,16 @@ const getTyreInspectionByVehicleId = async (req, res) => {
   }
 };
 
-const getTyre = async (req, res) => {
+const getTool = async (req, res) => {
   try {
     const { _id, organisationId } = req.query;
-    if (!_id) return res.status(400).send({ error: "tyre _id is required" });
+    if (!_id) return res.status(400).send({ error: "tool _id is required" });
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
-    const tyre = await TyreModel.findOne({ _id, organisationId }).lean();
-    if (!tyre) return res.status(400).send({ error: "tyre not found" });
-    const tyreWithStatusList = { ...tyre };
-    const statusList = tyreWithStatusList?.statusList || [];
+    const tool = await ToolModel.findOne({ _id, organisationId }).lean();
+    if (!tool) return res.status(400).send({ error: "tool not found" });
+    const toolWithStatusList = { ...tool };
+    const statusList = toolWithStatusList?.statusList || [];
     const statusListWithUser = [];
     if (statusList.length > 0) {
       await Promise.all(
@@ -539,72 +459,146 @@ const getTyre = async (req, res) => {
         })
       );
     }
-    tyreWithStatusList.statusList = statusListWithUser.sort(function (a, b) {
+    toolWithStatusList.statusList = statusListWithUser.sort(function (a, b) {
       return new Date(b?.date) - new Date(a?.date);
     });
 
     const tyreWithVehicle = await attachVehicle(
-      [tyreWithStatusList],
+      [toolWithStatusList],
       organisationId
     );
 
-    const tyreWithTrip = await attachTrip(tyreWithVehicle[0], organisationId);
-    const inspections = await TyreInspectionModel.find({
-      organisationId,
-      "details.serialNo": tyre.serialNo,
-    })
-      .lean()
-      .sort({ date: -1 });
+    // const inspections = await ToolInspectionModel.find({
+    //   organisationId,
+    //   "details.serialNo": tool.serialNo,
+    // })
+    //   .lean()
+    //   .sort({ date: -1 });
 
-    const tyreInspections = [];
-    const test = [];
-    if (inspections.length > 0) {
-      await Promise.all(
-        inspections.map(async (inspection) => {
-          const { userId, details } = inspection;
-          const detail = details.find(
-            (detail) => detail.serialNo === tyre.serialNo
-          );
+    // const toolInspections = [];
 
-          const user = await OrganisationUserModel.findOne(
-            {
-              _id: userId,
-            },
-            {
-              firstName: 1,
-              lastName: 1,
-              imageUrl: 1,
-            }
-          ).lean();
-          if (detail) {
-            tyreInspections.push({
-              date: inspection.date,
-              inspectionId: inspection.inspectionId,
-              ...detail,
-              inspector: user,
-            });
-          }
-        })
-      );
-    }
-    const formattedTyre = {
-      ...tyreWithTrip,
-      inspections: tyreInspections,
+    // if (inspections.length > 0) {
+    //   await Promise.all(
+    //     inspections.map(async (inspection) => {
+    //       const { userId, details } = inspection;
+    //       const detail = details.find(
+    //         (detail) => detail.serialNo === tool.serialNo
+    //       );
+
+    //       const user = await OrganisationUserModel.findOne(
+    //         {
+    //           _id: userId,
+    //         },
+    //         {
+    //           firstName: 1,
+    //           lastName: 1,
+    //           imageUrl: 1,
+    //         }
+    //       ).lean();
+    //       if (detail) {
+    //         tyreInspections.push({
+    //           date: inspection.date,
+    //           inspectionId: inspection.inspectionId,
+    //           ...detail,
+    //           inspector: user,
+    //         });
+    //       }
+    //     })
+    //   );
+    // }
+    const formattedTool = {
+      ...tyreWithVehicle[0],
+      // inspections: tyreInspections,
     };
 
-    return res.status(200).send({ data: formattedTyre });
+    return res.status(200).send({ data: formattedTool });
   } catch (error) {
     return res.status(500).send({ error: error.message });
   }
 };
-const getTyreInspection = async (req, res) => {
+const getToolExpenses = async (req, res) => {
+  try {
+    const { _id, organisationId } = req.query;
+    if (!_id) return res.status(400).send({ error: "tool _id is required" });
+    if (!organisationId)
+      return res.status(400).send({ error: "organisationId is required" });
+    const tool = await ToolModel.findOne({ _id, organisationId }).lean();
+
+    if (!tool) return res.status(400).send({ error: "tool not found" });
+
+    const toolId = tool.toolId;
+    let purchasedExpenses = {};
+    if (tool?.puchaseExpensesId) {
+      purchasedExpenses = await ExpensesModel.findOne({
+        expensesId: tool.puchaseExpensesId,
+        organisationId,
+      }).lean();
+    }
+    const repair = await ToolRepairModel.find({
+      toolId,
+      organisationId,
+      expensesId: { $exists: true },
+    }).lean();
+    const repairExpenses = await ExpensesModel.find({
+      expensesId: { $in: repair.map((r) => r.expensesId) },
+      organisationId,
+    }).lean();
+    const allExpenses = [];
+    if (purchasedExpenses) {
+      allExpenses.push({
+        ...purchasedExpenses,
+        type: "purchased",
+        debit: purchasedExpenses.amount,
+      });
+    }
+    if (repairExpenses.length > 0) {
+      repairExpenses.forEach((expense) => {
+        allExpenses.push({
+          ...expense,
+          type: repair.find((r) => r.expensesId === expense.expensesId)
+            ?.repairType,
+          debit: expense.amount,
+        });
+      });
+    }
+    const allExpensesWithUser = [];
+    await Promise.all(
+      allExpenses.map(async (expense) => {
+        const { userId } = expense;
+        const user = await OrganisationUserModel.findOne(
+          {
+            _id: userId,
+          },
+          {
+            firstName: 1,
+            lastName: 1,
+            imageUrl: 1,
+          }
+        ).lean();
+        if (user) {
+          allExpensesWithUser.push({
+            ...expense,
+            user,
+          });
+        }
+      })
+    );
+    const sortedExpenses = allExpensesWithUser.sort(function (a, b) {
+      return new Date(b?.date) - new Date(a?.date);
+    });
+    return res.status(200).send({ data: sortedExpenses });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+const getToolInspection = async (req, res) => {
   try {
     const { _id, organisationId } = req.query;
     if (!_id)
       return res.status(400).send({ error: "inspection _id is required" });
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
-    const inspection = await TyreInspectionModel.findOne({
+    const inspection = await ToolInspectionModel.findOne({
       _id: _id,
       organisationId,
     }).lean();
@@ -616,7 +610,7 @@ const getTyreInspection = async (req, res) => {
   }
 };
 
-const updateTyre = async (req, res) => {
+const updateTool = async (req, res) => {
   const { _id, userId, organisationId, status, reason } = req.body;
   try {
     if (!_id) return res.status(400).json({ error: "Please provide _id" });
@@ -624,32 +618,8 @@ const updateTyre = async (req, res) => {
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-    const oldData = await TyreModel.findById(_id).lean();
+    const oldData = await ToolModel.findById(_id).lean();
 
-    const vehicleId = oldData?.vehicleId;
-
-    if (status === "Active" && oldData?.status !== "Active") {
-      const assignedTruck = await TruckModel.findOne({
-        _id: vehicleId,
-        organisationId,
-      });
-      if (!assignedTruck)
-        return res.status(400).json({ error: "Assigned Truck not found" });
-      const tyreCount = assignedTruck?.tyreCount;
-      const activeTruckTyres = await TyreModel.find(
-        {
-          vehicleId: vehicleId,
-          organisationId,
-          disabled: false,
-          status: "Active",
-        },
-        { _id: 1 }
-      ).lean();
-      if (activeTruckTyres.length >= tyreCount)
-        return res.status(400).json({
-          error: `Total active tyres for this truck is already reached : ${tyreCount}`,
-        });
-    }
     const newData = req.body;
     const difference = [];
 
@@ -665,7 +635,6 @@ const updateTyre = async (req, res) => {
         key !== "organisationId" &&
         key !== "remarks" &&
         key !== "userId" &&
-        key !== "vendorId" &&
         key !== "vehicleId"
       ) {
         difference.push({
@@ -674,21 +643,6 @@ const updateTyre = async (req, res) => {
           new: newData[key],
         });
       }
-    }
-    if (req.body?.vendorId && req.body?.vendorId !== oldData?.vendorId) {
-      const oldVendor = await VendorAgentModel.findOne({
-        _id: oldData?.vendorId,
-        organisationId,
-      });
-      const newVendor = await VendorAgentModel.findOne({
-        _id: req.body?.vendorId,
-        organisationId,
-      });
-      difference.push({
-        field: "vendor",
-        old: getName(oldVendor) || "not provided",
-        new: getName(newVendor),
-      });
     }
 
     if (req.body?.vehicleId && req.body?.vehicleId !== oldData?.vehicleId) {
@@ -711,7 +665,7 @@ const updateTyre = async (req, res) => {
       date: new Date(),
       userId: userId,
       action: "edit",
-      details: `Tyres - updated`,
+      details: `Tools - updated`,
       reason: reason || "not provided",
       difference,
     };
@@ -730,7 +684,7 @@ const updateTyre = async (req, res) => {
       statusList: [...oldData?.statusList, statuListObj],
     };
 
-    const updateTyres = await TyreModel.findByIdAndUpdate(
+    const updateTools = await ToolModel.findByIdAndUpdate(
       _id,
       {
         ...params,
@@ -739,14 +693,14 @@ const updateTyre = async (req, res) => {
       { new: true }
     );
 
-    if (!updateTyres)
+    if (!updateTools)
       return res
         .status(401)
-        .json({ error: "Internal error in updating tyres" });
+        .json({ error: "Internal error in updating tools" });
 
     return res
       .status(200)
-      .send({ message: "Tyres updated successfully", data: updateTyres });
+      .send({ message: "Tools updated successfully", data: updateTools });
   } catch (error) {
     console.log(error);
     return res.status(500).json({
@@ -754,7 +708,7 @@ const updateTyre = async (req, res) => {
     });
   }
 };
-const updateTyreInspection = async (req, res) => {
+const updateToolInspection = async (req, res) => {
   const { _id, userId, organisationId } = req.body;
   try {
     if (!_id) return res.status(400).json({ error: "Please provide _id" });
@@ -762,7 +716,7 @@ const updateTyreInspection = async (req, res) => {
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-    const oldData = TyreInspectionModel.findById(_id, { lean: true });
+    const oldData = ToolInspectionModel.findById(_id, { lean: true });
     const newData = req.body;
     const difference = [];
 
@@ -831,8 +785,8 @@ const updateTyreInspection = async (req, res) => {
       date: new Date(),
       userId: userId,
       action: "edit",
-      details: `Tyres Inspection - updated`,
-      reason: `updated tyres inspection`,
+      details: `Tools Inspection - updated`,
+      reason: `updated tools inspection`,
       difference,
     };
 
@@ -840,7 +794,7 @@ const updateTyreInspection = async (req, res) => {
       ...req.body,
     };
 
-    const updateTyresInspection = await TyreInspectionModel.findByIdAndUpdate(
+    const updateToolsInspection = await ToolInspectionModel.findByIdAndUpdate(
       _id,
       {
         ...params,
@@ -849,14 +803,14 @@ const updateTyreInspection = async (req, res) => {
       { new: true }
     );
 
-    if (!updateTyresInspection)
+    if (!updateToolsInspection)
       return res
         .status(401)
-        .json({ error: "Internal error in updating tyres" });
+        .json({ error: "Internal error in updating tools" });
 
     return res.status(200).send({
-      message: "Tyres updated successfully",
-      data: updateTyresInspection,
+      message: "Tools updated successfully",
+      data: updateToolsInspection,
     });
   } catch (error) {
     console.log(error);
@@ -865,94 +819,74 @@ const updateTyreInspection = async (req, res) => {
     });
   }
 };
-const validateTyres = async (ids, type) => {
-  const tyres = await TyreModel.find({ _id: { $in: ids } });
-  if (tyres.length !== ids.length) {
-    return {
-      valid: false,
-      reason:
-        ids?.length > 1 ? "One or more tyres not found" : "Tyre not found",
-    };
+const validateTools = async (ids) => {
+  const tools = await ToolModel.find({ _id: { $in: ids } });
+  if (tools.length !== ids.length) {
+    return false;
   }
-  if (type === "delete") {
-    const isAnyTyreInUse = tyres.some(
-      (tyre) => tyre?.status.toLowerCase() === "active"
-    );
-    if (isAnyTyreInUse) {
-      return {
-        valid: false,
-        reason:
-          ids?.length > 1
-            ? "One or more tyres are is currently active, please change the status and try again"
-            : "Tyre is currently active, please change the status and try again",
-      };
-    }
-  }
-  return {
-    valid: true,
-  };
+  return true;
 };
-const disableTyres = async (ids, userId) => {
+const disableTools = async (ids, userId) => {
   const log = {
     date: new Date(),
     userId: userId,
     action: "delete",
-    details: `Tyre -  deleted`,
-    reason: `deleted tyre`,
+    details: `Tool -  deleted`,
+    reason: `deleted tool`,
   };
-  const updateExp = await TyreModel.updateMany(
+  const updateExp = await ToolModel.updateMany(
     { _id: { $in: ids } },
     { disabled: true, $push: { logs: log } }
   );
   if (!updateExp) return false;
   return true;
 };
-const enableTyres = async (ids, userId) => {
+const enableTools = async (ids, userId) => {
   const log = {
     date: new Date(),
     userId: userId,
     action: "restore",
-    details: `Tyre -  restored`,
-    reason: `deleted tyre`,
+    details: `Tool -  restored`,
+    reason: `deleted tool`,
   };
-  const updateExp = await TyreModel.updateMany(
+  const updateExp = await ToolModel.updateMany(
     { _id: { $in: ids } },
     { disabled: false, $push: { logs: log } }
   );
   if (!updateExp) return false;
   return true;
 };
-const validateTyreInspections = async (ids) => {
-  const tyreInspections = await TyreInspectionModel.find({ _id: { $in: ids } });
+const validateToolInspections = async (ids) => {
+  const tyreInspections = await ToolInspectionModel.find({ _id: { $in: ids } });
   if (tyreInspections.length !== ids.length) {
     return false;
   }
   return true;
 };
-const disableTyreInspections = async (ids, userId) => {
+const disableToolInspections = async (ids, userId) => {
   const log = {
     date: new Date(),
     userId: userId,
     action: "delete",
-    details: `Tyre -  deleted`,
-    reason: `deleted tyre`,
+    details: `Tool -  deleted`,
+    reason: `deleted tool`,
   };
-  const updateExp = await TyreInspectionModel.updateMany(
+  const updateExp = await ToolInspectionModel.updateMany(
     { _id: { $in: ids } },
     { disabled: true, $push: { logs: log } }
   );
   if (!updateExp) return false;
   return true;
 };
-const enableTyreInspections = async (ids, userId) => {
+const enableToolInspections = async (ids, userId) => {
   const log = {
     date: new Date(),
     userId: userId,
     action: "restore",
-    details: `Tyre -  restored`,
-    reason: `deleted tyre`,
+    details: `Tool -  restored`,
+    reason: `deleted tool`,
   };
-  const updateExp = await TyreInspectionModel.updateMany(
+  const updateExp = await ToolInspectionModel.updateMany(
     { _id: { $in: ids } },
     { disabled: false, $push: { logs: log } }
   );
@@ -960,25 +894,24 @@ const enableTyreInspections = async (ids, userId) => {
   return true;
 };
 
-const deleteTyres = async (req, res) => {
+const deleteTools = async (req, res) => {
   const { ids, userId } = req.body;
   try {
     if (!ids || ids.length === 0)
-      return res.status(400).send({ error: "No tyre id is provided" });
+      return res.status(400).send({ error: "No tool id is provided" });
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-    const type = "delete";
-    const isValid = await validateTyres(ids, type);
-    if (!isValid?.valid)
-      return res.status(400).send({ error: isValid?.reason });
-    const isDisabled = await disableTyres(ids, userId);
+    const isValid = await validateTools(ids);
+    if (!isValid)
+      return res.status(400).send({ error: "Invalid tool id is provided" });
+    const isDisabled = await disableTools(ids, userId);
     if (!isDisabled)
-      return res.status(400).send({ error: "Error in deleting tyres" });
+      return res.status(400).send({ error: "Error in deleting tools" });
     return res
       .status(200)
-      .send({ message: "Tyres deleted successfully", data: ids });
+      .send({ message: "Tools deleted successfully", data: ids });
   } catch (error) {
     console.log(error);
     return res.status(500).json({
@@ -986,30 +919,30 @@ const deleteTyres = async (req, res) => {
     });
   }
 };
-const deleteTyreInspections = async (req, res) => {
+const deleteToolInspections = async (req, res) => {
   const { ids, userId } = req.body;
   try {
     if (!ids || ids.length === 0)
       return res
         .status(400)
-        .send({ error: "No tyre inspection id is provided" });
+        .send({ error: "No tool inspection id is provided" });
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-    const isValid = await validateTyreInspections(ids);
+    const isValid = await validateToolInspections(ids);
     if (!isValid)
       return res
         .status(400)
-        .send({ error: "Invalid tyre inspection id is provided" });
-    const isDisabled = await disableTyreInspections(ids, userId);
+        .send({ error: "Invalid tool inspection id is provided" });
+    const isDisabled = await disableToolInspections(ids, userId);
     if (!isDisabled)
       return res
         .status(400)
-        .send({ error: "Error in deleting tyre inspections" });
+        .send({ error: "Error in deleting tool inspections" });
     return res
       .status(200)
-      .send({ message: "Tyre Inspections deleted successfully", data: ids });
+      .send({ message: "Tool Inspections deleted successfully", data: ids });
   } catch (error) {
     console.log(error);
     return res.status(500).json({
@@ -1017,25 +950,24 @@ const deleteTyreInspections = async (req, res) => {
     });
   }
 };
-const restoreTyres = async (req, res) => {
+const restoreTools = async (req, res) => {
   const { ids, userId } = req.body;
   try {
     if (!ids || ids.length === 0)
-      return res.status(400).send({ error: "No tyre id is provided" });
+      return res.status(400).send({ error: "No tool id is provided" });
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-    const type = "restore";
-    const isValid = await validateTyres(ids, type);
-    if (!isValid?.valid)
-      return res.status(400).send({ error: isValid?.reason });
-    const isDisabled = await enableTyres(ids, userId);
+    const isValid = await validateTools(ids);
+    if (!isValid)
+      return res.status(400).send({ error: "Invalid tool id is provided" });
+    const isDisabled = await enableTools(ids, userId);
     if (!isDisabled)
-      return res.status(400).send({ error: "Error in restoring tyres" });
+      return res.status(400).send({ error: "Error in restoring tools" });
     return res
       .status(200)
-      .send({ message: "Tyres restored successfully", data: ids });
+      .send({ message: "Tools restored successfully", data: ids });
   } catch (error) {
     console.log(error);
     return res.status(500).json({
@@ -1043,30 +975,30 @@ const restoreTyres = async (req, res) => {
     });
   }
 };
-const restoreTyreInspections = async (req, res) => {
+const restoreToolInspections = async (req, res) => {
   const { ids, userId } = req.body;
   try {
     if (!ids || ids.length === 0)
       return res
         .status(400)
-        .send({ error: "No tyre inspection id is provided" });
+        .send({ error: "No tool inspection id is provided" });
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-    const isValid = await validateTyreInspections(ids);
+    const isValid = await validateToolInspections(ids);
     if (!isValid)
       return res
         .status(400)
-        .send({ error: "Invalid tyre inspection id is provided" });
-    const isDisabled = await enableTyreInspections(ids, userId);
+        .send({ error: "Invalid tool inspection id is provided" });
+    const isDisabled = await enableToolInspections(ids, userId);
     if (!isDisabled)
       return res
         .status(400)
-        .send({ error: "Error in restoring tyre inspection" });
+        .send({ error: "Error in restoring tool inspection" });
     return res
       .status(200)
-      .send({ message: "Tyre Inspections restored successfully", data: ids });
+      .send({ message: "Tool Inspections restored successfully", data: ids });
   } catch (error) {
     console.log(error);
     return res.status(500).json({
@@ -1075,11 +1007,11 @@ const restoreTyreInspections = async (req, res) => {
   }
 };
 
-const getTyreLogs = async (req, res) => {
+const getToolLogs = async (req, res) => {
   try {
     const { _id } = req.query;
-    if (!_id) return res.status(400).send({ error: "Tyres _id is required" });
-    const tyres = await TyreModel.aggregate([
+    if (!_id) return res.status(400).send({ error: "Tools _id is required" });
+    const tools = await ToolModel.aggregate([
       {
         $match: {
           _id: mongoose.Types.ObjectId(_id),
@@ -1144,7 +1076,7 @@ const getTyreLogs = async (req, res) => {
       },
     ]);
 
-    const logs = tyres[0]?.logs;
+    const logs = tools[0]?.logs;
     if (!logs || logs?.length === 0) return res.status(200).send({ data: [] });
 
     return res.status(200).send({
@@ -1155,21 +1087,21 @@ const getTyreLogs = async (req, res) => {
   }
 };
 
-const addTyreRemark = async (req, res) => {
+const addToolRemark = async (req, res) => {
   try {
     const { _id, remarkObj } = req.body;
 
     const { remark, userId } = remarkObj;
 
-    if (!_id) return res.status(400).send({ error: "tyres_id is required" });
+    if (!_id) return res.status(400).send({ error: "tools_id is required" });
     if (!remark) return res.status(400).send({ error: "empty remark " });
 
     if (!userId)
       return res.status(400).send({ error: "current userId is required " });
-    const tyres = await TyreModel.findById({ _id });
-    if (!tyres) return res.status(400).send({ error: "tyres not found" });
+    const tools = await ToolModel.findById({ _id });
+    if (!tools) return res.status(400).send({ error: "tools not found" });
     remarkObj.date = new Date();
-    const updateRemark = await TyreModel.findByIdAndUpdate(
+    const updateRemark = await ToolModel.findByIdAndUpdate(
       {
         _id,
       },
@@ -1185,9 +1117,9 @@ const addTyreRemark = async (req, res) => {
       userId,
       action: "remark",
       reason: "added remark",
-      details: `added remark on tyres`,
+      details: `added remark on tools`,
     };
-    const updateTyres = await TyreModel.findByIdAndUpdate(
+    const updateTools = await ToolModel.findByIdAndUpdate(
       { _id },
       { $push: { logs: log } },
       { new: true }
@@ -1200,21 +1132,21 @@ const addTyreRemark = async (req, res) => {
   }
 };
 
-const deleteTyreRemark = async (req, res) => {
+const deleteToolRemark = async (req, res) => {
   try {
-    const { tyreId, remarkId, userId } = req.body;
-    if (!tyreId) return res.status(400).send({ error: "tyreId is required" });
+    const { toolId, remarkId, userId } = req.body;
+    if (!toolId) return res.status(400).send({ error: "toolId is required" });
     if (!remarkId)
       return res.status(400).send({ error: "remarkId is required" });
     if (!userId)
       return res.status(400).send({ error: "current userId is required" });
 
-    const tyres = await TyreModel.findById({
-      _id: tyreId,
+    const tools = await ToolModel.findById({
+      _id: toolId,
     });
-    if (!tyres) return res.status(400).send({ error: "tyres not found" });
-    const param = { tyreId, remarkId, userId };
-    const canPerformAction = await canDeleteOrEditOrganisationTyreRemark(param);
+    if (!tools) return res.status(400).send({ error: "tools not found" });
+    const param = { toolId, remarkId, userId };
+    const canPerformAction = await canDeleteOrEditOrganisationToolRemark(param);
     if (!canPerformAction)
       return res
         .status(400)
@@ -1224,12 +1156,12 @@ const deleteTyreRemark = async (req, res) => {
       userId,
       action: "delete",
       reason: "deleted remark",
-      details: `deleted remark on tyres`,
+      details: `deleted remark on tools`,
     };
 
-    const updateRemark = await TyreModel.findByIdAndUpdate(
+    const updateRemark = await ToolModel.findByIdAndUpdate(
       {
-        _id: tyreId,
+        _id: toolId,
       },
       {
         $pull: {
@@ -1245,30 +1177,30 @@ const deleteTyreRemark = async (req, res) => {
     return res.status(500).send(error.message);
   }
 };
-const editTyreRemark = async (req, res) => {
+const editToolRemark = async (req, res) => {
   try {
-    const { tyreId, remarkId, userId, remark } = req.body;
-    if (!tyreId) return res.status(400).send({ error: "tyreId is required" });
+    const { toolId, remarkId, userId, remark } = req.body;
+    if (!toolId) return res.status(400).send({ error: "toolId is required" });
     if (!remarkId)
       return res.status(400).send({ error: "remarkId is required" });
     if (!userId)
       return res.status(400).send({ error: "current userId is required" });
     if (!remark) return res.status(400).send({ error: "remark is required" });
 
-    const tyres = await TyreModel.findById({
-      _id: tyreId,
+    const tools = await ToolModel.findById({
+      _id: toolId,
     });
-    if (!tyres) return res.status(400).send({ error: "tyres not found" });
-    const param = { tyreId, remarkId, userId };
-    const canPerformAction = await canDeleteOrEditOrganisationTyreRemark(param);
+    if (!tools) return res.status(400).send({ error: "tools not found" });
+    const param = { toolId, remarkId, userId };
+    const canPerformAction = await canDeleteOrEditOrganisationToolRemark(param);
     if (!canPerformAction)
       return res
         .status(400)
         .send({ error: "you dont have the permission to edit this remark" });
 
-    const updateRemark = await TyreModel.updateOne(
+    const updateRemark = await ToolModel.updateOne(
       {
-        _id: tyreId,
+        _id: toolId,
         remarks: { $elemMatch: { _id: remarkId } },
       },
 
@@ -1284,10 +1216,10 @@ const editTyreRemark = async (req, res) => {
       userId,
       action: "edit",
       reason: "edited remark",
-      details: `edited remark on tyres`,
+      details: `edited remark on tools`,
     };
-    const updateTyre = await TyreModel.findByIdAndUpdate(
-      { _id: tyreId },
+    const updateTool = await ToolModel.findByIdAndUpdate(
+      { _id: toolId },
       { $push: { logs: log } },
       { new: true }
     );
@@ -1298,11 +1230,11 @@ const editTyreRemark = async (req, res) => {
   }
 };
 
-const getTyreRemarks = async (req, res) => {
+const getToolRemarks = async (req, res) => {
   try {
     const { _id } = req.query;
-    if (!_id) return res.status(400).send({ error: "tyres _id is required" });
-    const tyres = await TyreModel.aggregate([
+    if (!_id) return res.status(400).send({ error: "tools _id is required" });
+    const tools = await ToolModel.aggregate([
       {
         $match: {
           _id: mongoose.Types.ObjectId(_id),
@@ -1367,7 +1299,7 @@ const getTyreRemarks = async (req, res) => {
       },
     ]);
 
-    const remarks = tyres[0]?.remarks;
+    const remarks = tools[0]?.remarks;
 
     if (!remarks || remarks?.length === 0) return res.status(200).send([]);
 
@@ -1379,25 +1311,149 @@ const getTyreRemarks = async (req, res) => {
   }
 };
 
+const uploadToolImages = async (req, res) => {
+  try {
+    const { toolId, userId } = req.body;
+    if (!toolId) return res.status(400).send({ error: "toolId is required" });
+    if (!userId) return res.status(400).send({ error: "userId is required" });
+
+    if (!req.files) return res.status(400).send({ error: "image is required" });
+
+    const tool = await ToolModel.findById({ _id: toolId });
+    if (!tool) return res.status(400).send({ error: "tool not found" });
+    const param = { toolId, userId };
+    const canPerformAction = await canEditOrganisationTool(param);
+    if (!canPerformAction)
+      return res.status(400).send({
+        error: "you dont have the permission to carry out this request",
+      });
+    const pictures = req.files?.pictures || [];
+    const documents = req.files?.documents || [];
+    const upload = await handleImageUpload([...documents, ...pictures]);
+
+    const docs = await Promise.all([upload]);
+    const { newDocuments, newPictures } = docs[0];
+    const log = {
+      date: new Date(),
+      userId,
+      action: "edit",
+      reason: "added images",
+      details: `added images on tool`,
+    };
+    const updateTool = await ToolModel.findByIdAndUpdate(
+      { _id: toolId },
+      {
+        $push: {
+          documents: newDocuments || {},
+          pictures: newPictures || {},
+          logs: log,
+        },
+      },
+      { new: true }
+    );
+    if (!updateTool) return res.status(400).send({ error: "tool not found" });
+    return res.status(200).send({ data: updateTool });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+const deleteToolImage = async (req, res) => {
+  try {
+    const { toolId, imageId, userId, imageType } = req.body;
+    if (!toolId) return res.status(400).send({ error: "toolId is required" });
+    if (!imageId) return res.status(400).send({ error: "imageId is required" });
+    if (!userId) return res.status(400).send({ error: "userId is required" });
+    if (imageType !== "documents" && imageType !== "pictures")
+      return res.status(400).send({ error: "imageType is required" });
+    const tool = await ToolModel.findById({ _id: toolId });
+    if (!tool) return res.status(400).send({ error: "tool not found" });
+    const param = { toolId, userId };
+    const canPerformAction = await canEditOrganisationTool(param);
+    if (!canPerformAction)
+      return res
+        .status(400)
+        .send({ error: "you dont have the permission to delete this image" });
+    let log = {};
+    let updateParam = {};
+    if (imageType === "documents") {
+      log = {
+        date: new Date(),
+        userId,
+        action: "delete",
+        reason: "deleted document",
+        details: `deleted document on tool`,
+      };
+      updateParam = {
+        $pull: {
+          documents: { _id: imageId },
+          logs: log,
+        },
+      };
+    }
+    if (imageType === "pictures") {
+      log = {
+        date: new Date(),
+        userId,
+        action: "delete",
+        reason: "deleted picture",
+        details: `deleted tool picture`,
+      };
+      updateParam = {
+        $pull: {
+          pictures: { _id: imageId },
+          logs: log,
+        },
+      };
+    }
+    const updateTool = await ToolModel.findByIdAndUpdate(
+      { _id: toolId },
+      updateParam,
+      { new: true }
+    );
+    if (!updateTool) return res.status(400).send({ error: "tool not found" });
+
+    if (imageType === "documents") {
+      const image = tool.documents.find((doc) => doc._id == imageId);
+      const oldImageName = image?.name;
+      if (oldImageName) {
+        await deleteImageFromFirebase(oldImageName);
+      }
+    }
+    if (imageType === "pictures") {
+      const image = tool.pictures.find((doc) => doc._id == imageId);
+      const oldImageName = image?.name;
+      if (oldImageName) {
+        await deleteImageFromFirebase(oldImageName);
+      }
+    }
+
+    return res.status(200).send({ data: updateTool });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+
 module.exports = {
-  addTyreRemark,
-  deleteTyreRemark,
-  editTyreRemark,
-  getTyreRemarks,
-  createTyre,
-  getTyreInspection,
-  getTyreInspections,
-  getTyres,
-  getTyresByParams,
-  getTyresByVehicleId,
-  getTyre,
-  updateTyre,
-  deleteTyres,
-  getTyreLogs,
-  restoreTyres,
-  recordTyreInspection,
-  getTyreInspectionByVehicleId,
-  updateTyreInspection,
-  deleteTyreInspections,
-  restoreTyreInspections,
+  addToolRemark,
+  deleteToolRemark,
+  editToolRemark,
+  getToolRemarks,
+  createTool,
+  getToolInspection,
+  getToolInspections,
+  getTools,
+  getToolsByParams,
+  getToolsByVehicleId,
+  getTool,
+  getToolExpenses,
+  updateTool,
+  deleteTools,
+  getToolLogs,
+  restoreTools,
+  getToolInspectionByVehicleId,
+  updateToolInspection,
+  deleteToolInspections,
+  restoreToolInspections,
+  uploadToolImages,
+  deleteToolImage,
 };

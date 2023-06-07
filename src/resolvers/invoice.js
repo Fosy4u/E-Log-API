@@ -135,7 +135,7 @@ const createInvoice = async (req, res) => {
     const log = {
       date: new Date(),
       userId: userId,
-      action: "create",
+      action: "added",
       details: `Invoice -  created`,
       reason: `added new invoice`,
     };
