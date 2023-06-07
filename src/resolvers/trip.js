@@ -601,7 +601,7 @@ const createTrip = async (req, res) => {
     const log = {
       date: new Date(),
       userId: userId,
-      action: "create",
+      action: "added",
       details: `trip created`,
       reason: `accepted customer request`,
     };
@@ -836,7 +836,7 @@ const updateTrip = async (req, res) => {
         req.body.estimatedDropOffDate
       ).toISOString();
     }
-    console.log("params", params);
+   
 
     const updateTrip = await TripModel.findByIdAndUpdate(
       _id,
@@ -1667,31 +1667,31 @@ const tripAction = async (req, res) => {
     }
     if (action === "cancel") {
       const timeline = trip?.timeline?.filter(
-        (item) => item?.action === "created"
+        (item) => item?.action === "created" || item?.action === "added"
       );
+
       if (!cancelReason)
         return res.status(400).send({ error: "cancel reason is required" });
+
       let reason = "";
       const expenses = await ExpensesModel.find({
         tripId: trip.requestId,
         disabled: false,
       }).lean();
+
       if (expenses.length > 0) {
         reason =
-          ids.length > 1
-            ? "One of the selected trips has recorded expenses. You need to first delete or disassociate the expenses from the trip"
-            : "Trip has recorded expenses. You need to first delete or disassociate the expenses from the trip";
+          "Trip has recorded expenses. You need to first delete or disassociate the expenses from the trip";
         return res.status(400).send({ error: reason });
       }
+      console.log("cancel 5");
       const payment = await PaymentModel.findOne({
         "requestIds.requestId": trip.requestId,
         disabled: false,
       });
       if (payment) {
         reason =
-          ids.length > 1
-            ? "One of the selected trips has recorded payments. You need to first delete or disassociate the payments from the trip"
-            : "Trip has recorded payments. You need to first delete or disassociate the payments from the trip";
+          "Trip has recorded payments. You need to first delete or disassociate the payments from the trip";
         return res.status(400).send({ error: reason });
       }
       log = {

@@ -166,7 +166,7 @@ const createPayment = async (req, res) => {
     const log = {
       date: new Date(),
       userId: userId,
-      action: "create",
+      action: "added",
       details: `Payment -  created`,
       reason: `added new payment`,
     };

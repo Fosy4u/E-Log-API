@@ -125,7 +125,7 @@ const createOrganisationPartner = async (req, res) => {
       const log = {
         date: new Date(),
         userId: userId,
-        action: "create",
+        action: "added",
         details: `Partner - ${newContact.firstName} ${newContact.lastName} created`,
         reason: `added new partner`,
       };

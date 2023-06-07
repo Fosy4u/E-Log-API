@@ -158,7 +158,7 @@ const createExpenses = async (req, res) => {
     const log = {
       date: new Date(),
       userId: userId,
-      action: "create",
+      action: "added",
       details: `Expenses -  created`,
       reason: `added new expenses`,
     };
@@ -173,12 +173,14 @@ const createExpenses = async (req, res) => {
     }
     let params;
 
-    if (req.files?.length > 0) {
+    if (req.files) {
       let documents = [];
       let pictures = [];
+      const uploadedPictures = req.files?.pictures || [];
+      const uploadedDocuments = req.files?.documents || [];
       const upload = await handleImageUpload([
-        ...req.files?.documents,
-        ...req.files?.pictures,
+        ...uploadedPictures,
+        ...uploadedDocuments,
       ]);
 
       const docs = await Promise.all([upload]);

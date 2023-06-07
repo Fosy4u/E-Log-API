@@ -2,6 +2,7 @@ const fs = require("fs");
 const PaymentModel = require("../models/payment");
 
 const deleteLocalFile = async (path) => {
+
   return new Promise((resolve) => {
     fs.unlink(path, (error) => {
       error && console.log("WARNING:: Delete local file", error);
