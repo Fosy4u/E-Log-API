@@ -1,9 +1,10 @@
 const ToolModel = require("../models/tool");
-const TruckModel = require("../models/truck");
 const ToolRepairModel = require("../models/toolRepair");
+const TruckModel = require("../models/truck");
 const ExpensesModel = require("../models/expenses");
 const ToolInspectionModel = require("../models/tyreInspection");
 const OrganisationUserModel = require("../models/organisationUsers");
+const DriverModel = require("../models/driver");
 const mongoose = require("mongoose");
 const { storageRef } = require("../config/firebase"); // reference to our db
 const root = require("../../root");
@@ -16,6 +17,7 @@ const {
   canCreateOrganisationTool,
 } = require("../helpers/actionPermission");
 const { deleteLocalFile } = require("../helpers/utils");
+const e = require("express");
 
 //saving image to firebase storage
 const addImage = async (destination, filename) => {
@@ -37,6 +39,7 @@ const addImage = async (destination, filename) => {
       }
     );
     url = { link: storage[0].metadata.mediaLink, name: filename };
+    console.log("source is", source);
     const deleteSourceFile = await deleteLocalFile(source);
     const deleteResizedFile = await deleteLocalFile(
       path.resolve(destination, "resized", filename)
@@ -127,7 +130,15 @@ const handleImageUpload = async (files) => {
 };
 
 const createTool = async (req, res) => {
-  const { organisationId, userId, remark, vehicleId, status, name } = req.body;
+  const {
+    organisationId,
+    userId,
+    remark,
+    vehicleId,
+    status,
+    name,
+    assignedUserId,
+  } = req.body;
 
   try {
     if (!organisationId) {
@@ -145,16 +156,16 @@ const createTool = async (req, res) => {
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-
-    const assignedVehicle = await TruckModel.findOne({
-      _id: vehicleId,
-      organisationId,
-    });
-    if (!assignedVehicle)
-      return res
-        .status(400)
-        .json({ error: "Vehicle to be assigned not found" });
-
+    if (vehicleId) {
+      const assignedVehicle = await TruckModel.findOne({
+        _id: vehicleId,
+        organisationId,
+      });
+      if (!assignedVehicle)
+        return res
+          .status(400)
+          .json({ error: "Vehicle to be assigned not found" });
+    }
     const param = { organisationId, userId };
     const canPerformAction = await canCreateOrganisationTool(param);
     if (!canPerformAction)
@@ -209,11 +220,35 @@ const createTool = async (req, res) => {
         userId,
       },
     ];
+    let assignedUserList = [];
+    let assignedVehicleList = [];
+    if (assignedUserId) {
+      assignedUserList = [
+        {
+          assignedUserId,
+          date: new Date(),
+          userId,
+          action: "assigned",
+        },
+      ];
+    }
+    if (vehicleId) {
+      assignedVehicleList = [
+        {
+          vehicleId,
+          date: new Date(),
+          userId,
+          action: "assigned",
+        },
+      ];
+    }
     params = {
       ...req.body,
       logs: [log],
       remarks,
       statusList,
+      assignedUserList,
+      assignedVehicleList,
       ...(documents.length > 0 && { documents }),
       ...(pictures.length > 0 && { pictures }),
     };
@@ -433,8 +468,8 @@ const getTool = async (req, res) => {
       return res.status(400).send({ error: "organisationId is required" });
     const tool = await ToolModel.findOne({ _id, organisationId }).lean();
     if (!tool) return res.status(400).send({ error: "tool not found" });
-    const toolWithStatusList = { ...tool };
-    const statusList = toolWithStatusList?.statusList || [];
+    const currentTool = { ...tool };
+    const statusList = currentTool?.statusList || [];
     const statusListWithUser = [];
     if (statusList.length > 0) {
       await Promise.all(
@@ -459,14 +494,145 @@ const getTool = async (req, res) => {
         })
       );
     }
-    toolWithStatusList.statusList = statusListWithUser.sort(function (a, b) {
+    currentTool.statusList = statusListWithUser.sort(function (a, b) {
+      return new Date(b?.date) - new Date(a?.date);
+    });
+    const assignedVehicleList = currentTool?.assignedVehicleList || [];
+    const allAssignedVehicleList = [];
+    await Promise.all(
+      assignedVehicleList.map(async (vehicle) => {
+        const { vehicleId, userId } = vehicle;
+        const vehicleData = await TruckModel.findOne(
+          {
+            _id: vehicleId,
+            organisationId,
+          },
+          {
+            regNo: 1,
+            imageUrl: 1,
+            model: 1,
+            brand: 1,
+          }
+        ).lean();
+
+        const actionedByUser = await OrganisationUserModel.findOne(
+          {
+            _id: userId,
+          },
+          {
+            firstName: 1,
+            lastName: 1,
+            imageUrl: 1,
+          }
+        ).lean();
+        if (vehicleData) {
+          allAssignedVehicleList.push({
+            vehicle: { ...vehicleData },
+            title: vehicleData.regNo,
+            actionedByUser,
+            ...vehicle,
+          });
+        }
+      })
+    );
+    currentTool.assignedVehicleList = allAssignedVehicleList.sort(function (
+      a,
+      b
+    ) {
       return new Date(b?.date) - new Date(a?.date);
     });
 
-    const tyreWithVehicle = await attachVehicle(
-      [toolWithStatusList],
-      organisationId
+    const assignedUserList = currentTool?.assignedUserList || [];
+    const allAssignedUserList = [];
+    await Promise.all(
+      assignedUserList.map(async (user) => {
+        const { userId, assignedUserId } = user;
+
+        const actionedByUser = await OrganisationUserModel.findOne(
+          {
+            _id: userId,
+          },
+          {
+            firstName: 1,
+            lastName: 1,
+            imageUrl: 1,
+          }
+        ).lean();
+
+        let currentUser = {};
+        currentUser = await OrganisationUserModel.findOne(
+          {
+            _id: assignedUserId,
+          },
+          {
+            firstName: 1,
+            lastName: 1,
+            imageUrl: 1,
+          }
+        ).lean();
+        if (!currentUser) {
+          currentUser = await DriverModel.findOne(
+            {
+              _id: assignedUserId,
+            },
+            {
+              firstName: 1,
+              lastName: 1,
+              imageUrl: 1,
+            }
+          ).lean();
+        }
+
+        if (currentUser) {
+          allAssignedUserList.push({
+            ...user,
+            assignedUser: { ...currentUser },
+            actionedByUser,
+            title: `${currentUser?.firstName && currentUser.firstName} ${
+              currentUser?.lastName && currentUser.lastName
+            }`,
+          });
+        }
+      })
     );
+    currentTool.assignedUserList = allAssignedUserList.sort(function (a, b) {
+      return new Date(b?.date) - new Date(a?.date);
+    });
+    if (currentTool?.assignedUserId) {
+      let assignedUser = {};
+      assignedUser = await OrganisationUserModel.findOne(
+        {
+          _id: currentTool?.assignedUserId,
+        },
+        {
+          firstName: 1,
+          lastName: 1,
+          imageUrl: 1,
+          isEmployee: 1,
+          isTechnician: 1,
+          isTripManager: 1,
+        }
+      ).lean();
+      if (!assignedUser) {
+        const driver = await DriverModel.findOne(
+          {
+            _id: currentTool?.assignedUserId,
+          },
+          {
+            firstName: 1,
+            lastName: 1,
+            imageUrl: 1,
+          }
+        ).lean();
+        if (driver) {
+          assignedUser = { ...driver, isDriver: true };
+        }
+      }
+
+      currentTool.assignedUser = assignedUser;
+    }
+
+    const tyreWithVehicle = await attachVehicle([currentTool], organisationId);
 
     // const inspections = await ToolInspectionModel.find({
     //   organisationId,
@@ -543,23 +709,59 @@ const getToolExpenses = async (req, res) => {
       expensesId: { $in: repair.map((r) => r.expensesId) },
       organisationId,
     }).lean();
+
     const allExpenses = [];
     if (purchasedExpenses) {
       allExpenses.push({
         ...purchasedExpenses,
         type: "purchased",
         debit: purchasedExpenses.amount,
+        from: "purchased",
       });
     }
     if (repairExpenses.length > 0) {
       repairExpenses.forEach((expense) => {
-        allExpenses.push({
-          ...expense,
-          type: repair.find((r) => r.expensesId === expense.expensesId)
-            ?.repairType,
-          debit: expense.amount,
-        });
+        const found = allExpenses.find(
+          (e) => e.expensesId === expense.expensesId
+        );
+        if (!found) {
+          allExpenses.push({
+            ...expense,
+            type: repair.find((r) => r.expensesId === expense.expensesId)
+              ?.repairType,
+            debit: expense.amount,
+            from: "repair",
+
+            repairId: repair.find((r) => r.expensesId === expense.expensesId)
+              .repairId,
+          });
+        }
       });
+    }
+    const linkedOtherExpensesId = tool?.linkedOtherExpensesId || [];
+
+    if (linkedOtherExpensesId.length > 0) {
+      const otherExpenses = await ExpensesModel.find({
+        _id: { $in: linkedOtherExpensesId },
+        organisationId,
+      }).lean();
+      if (otherExpenses.length > 0) {
+        otherExpenses.forEach((expense) => {
+          const found = allExpenses.find(
+            (e) => e.expensesId === expense.expensesId
+          );
+          if (!found) {
+            allExpenses.push({
+              ...expense,
+              type: otherExpenses.find(
+                (e) => e.expensesId === expense.expensesId
+              )?.type,
+              debit: expense.amount,
+              from: "linked other expenses",
+            });
+          }
+        });
+      }
     }
     const allExpensesWithUser = [];
     await Promise.all(
@@ -611,13 +813,43 @@ const getToolInspection = async (req, res) => {
 };
 
 const updateTool = async (req, res) => {
-  const { _id, userId, organisationId, status, reason } = req.body;
+  const {
+    _id,
+    userId,
+    organisationId,
+    status,
+    reason,
+    vehicleId,
+    assignedUserId,
+    unAssignUser,
+    unAssignVehicle,
+  } = req.body;
   try {
     if (!_id) return res.status(400).json({ error: "Please provide _id" });
     if (!userId)
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
+    if (!organisationId)
+      return res.status(400).json({ error: "Please provide organisationId" });
+    if (unAssignUser && assignedUserId)
+      return res.status(400).json({
+        error: "Please provide either unAssignUser or assignedUserId",
+      });
+    if (unAssignVehicle && vehicleId)
+      return res
+        .status(400)
+        .json({ error: "Please provide either unAssignVehicle or vehicleId" });
+    if (vehicleId) {
+      const assignedVehicle = await TruckModel.findOne({
+        _id: vehicleId,
+        organisationId,
+      });
+      if (!assignedVehicle)
+        return res
+          .status(400)
+          .json({ error: "Vehicle to be assigned not found" });
+    }
     const oldData = await ToolModel.findById(_id).lean();
 
     const newData = req.body;
@@ -646,12 +878,16 @@ const updateTool = async (req, res) => {
     }
 
     if (req.body?.vehicleId && req.body?.vehicleId !== oldData?.vehicleId) {
-      const oldVehicle = await TruckModel.findOne({
-        _id: oldData?.vehicleId,
-        organisationId,
-      });
+      let oldVehicle = {};
+      if (oldData?.vehicleId) {
+        oldVehicle = await TruckModel.findOne({
+          _id: mongoose.Types.ObjectId(oldData?.vehicleId || ""),
+          organisationId,
+        });
+      }
+
       const newVehicle = await TruckModel.findOne({
-        _id: req.body?.vehicleId,
+        _id: mongoose.Types.ObjectId(req.body?.vehicleId || ""),
         organisationId,
       });
       difference.push({
@@ -677,11 +913,94 @@ const updateTool = async (req, res) => {
         userId,
       };
     }
+    let previousAssignedUserObj = {};
+    let assignedUserObj = {};
+    let previousAssignedVehicleObj = {};
+    let assignedVehicleObj = {};
+    if (assignedUserId && assignedUserId !== oldData?.assignedUserId) {
+      if (
+        oldData?.assignedUserId &&
+        oldData?.assignedUserId !== null &&
+        oldData?.assignedUserId !== ""
+      ) {
+        previousAssignedUserObj = {
+          userId,
+          date: new Date(),
+          action: "unassigned",
+          assignedUserId: oldData?.assignedUserId,
+        };
+        console.log("previousAssignedUserObj", previousAssignedUserObj);
+      }
+
+      if (assignedUserId && assignedUserId !== null && assignedUserId !== "") {
+        assignedUserObj = {
+          userId,
+          date: new Date(),
+          action: "assigned",
+          assignedUserId,
+        };
+      }
+    }
+
+    if (vehicleId && vehicleId !== oldData?.vehicleId) {
+      if (oldData?.vehicleId) {
+        previousAssignedVehicleObj = {
+          userId,
+          date: new Date(),
+          action: "unassigned",
+          vehicleId: oldData?.vehicleId,
+        };
+      }
+      if (vehicleId) {
+        assignedVehicleObj = {
+          userId,
+          date: new Date(),
+          action: "assigned",
+          vehicleId,
+        };
+      }
+    }
+    if (unAssignUser) {
+      previousAssignedUserObj = {
+        userId,
+        date: new Date(),
+        action: "unassigned",
+        assignedUserId: oldData?.assignedUserId,
+      };
+    }
+    if (unAssignVehicle) {
+      previousAssignedVehicleObj = {
+        userId,
+        date: new Date(),
+        action: "unassigned",
+        vehicleId: oldData?.vehicleId,
+      };
+    }
+
+    const assignedUserList = [...(oldData?.assignedUserList || [])];
+    if (previousAssignedUserObj?.assignedUserId) {
+      assignedUserList.push(previousAssignedUserObj);
+    }
+    if (assignedUserObj?.assignedUserId) {
+      assignedUserList.push(assignedUserObj);
+    }
+
+    const assignedVehicleList = [...(oldData?.assignedVehicleList || [])];
+    if (previousAssignedVehicleObj?.vehicleId) {
+      assignedVehicleList.push(previousAssignedVehicleObj);
+    }
+    if (assignedVehicleObj?.vehicleId) {
+      assignedVehicleList.push(assignedVehicleObj);
+    }
 
     const params = {
       ...req.body,
+      assignedUserId: unAssignUser ? null : assignedUserId,
+      vehicleId: unAssignVehicle ? null : vehicleId,
 
       statusList: [...oldData?.statusList, statuListObj],
+      assignedUserList,
+      assignedVehicleList,
     };
 
     const updateTools = await ToolModel.findByIdAndUpdate(
@@ -745,11 +1064,11 @@ const updateToolInspection = async (req, res) => {
 
     if (req.body?.vehicleId && req.body?.vehicleId !== oldData?.vehicleId) {
       const oldVehicle = await TruckModel.findOne({
-        _id: oldData?.vehicleId,
+        _id: mongoose.Types.ObjectId(oldData?.vehicleId),
         organisationId,
       });
       const newVehicle = await TruckModel.findOne({
-        _id: req.body?.vehicleId,
+        _id: mongoose.Types.ObjectId(req.body?.vehicleId),
         organisationId,
       });
       difference.push({
@@ -1432,6 +1751,138 @@ const deleteToolImage = async (req, res) => {
     return res.status(500).send({ error: error.message });
   }
 };
+const linkToolToExpenses = async (req, res) => {
+  try {
+    const { _id, expenseId, userId, organisationId } = req.body;
+    if (!_id) return res.status(400).send({ error: "_id is required" });
+    if (!organisationId)
+      return res.status(400).send({ error: "organisationId is required" });
+    if (!expenseId)
+      return res.status(400).send({ error: "expenseId is required" });
+    if (!userId) return res.status(400).send({ error: "userId is required" });
+    const expenses = await ExpensesModel.findById({ _id: expenseId });
+    if (!expenses) return res.status(400).send({ error: "expense not found" });
+    const tool = await ToolModel.findById({ _id: _id });
+    if (!tool) return res.status(400).send({ error: "tool not found" });
+    const toolId = tool.toolId;
+    let purchasedExpenses = {};
+    if (tool?.puchaseExpensesId) {
+      purchasedExpenses = await ExpensesModel.findOne({
+        expensesId: tool.puchaseExpensesId,
+        organisationId,
+      }).lean();
+    }
+    const repair = await ToolRepairModel.find({
+      toolId,
+      organisationId,
+      expensesId: { $exists: true },
+    }).lean();
+    const repairExpenses = await ExpensesModel.find({
+      expensesId: { $in: repair.map((r) => r.expensesId) },
+      organisationId,
+    }).lean();
+
+    const allExpenses = [];
+    if (purchasedExpenses) {
+      allExpenses.push({
+        ...purchasedExpenses,
+      });
+    }
+
+    if (repairExpenses.length > 0) {
+      repairExpenses.forEach((expense) => {
+        const found = allExpenses.find(
+          (e) => e.expensesId === expense.expensesId
+        );
+        if (!found) {
+          allExpenses.push({
+            ...expense,
+          });
+        }
+      });
+    }
+    const linkedOtherExpensesId = tool?.linkedOtherExpensesId || [];
+
+    if (linkedOtherExpensesId.length > 0) {
+      const otherExpenses = await ExpensesModel.find({
+        _id: { $in: linkedOtherExpensesId },
+        organisationId,
+      }).lean();
+      if (otherExpenses.length > 0) {
+        otherExpenses.forEach((expense) => {
+          const found = allExpenses.find(
+            (e) => e.expensesId === expense.expensesId
+          );
+          if (!found) {
+            allExpenses.push({
+              ...expense,
+            });
+          }
+        });
+      }
+    }
+
+    const exist = allExpenses.find((e) => e.expensesId === expenses.expensesId);
+    if (exist)
+      return res
+        .status(400)
+        .send({ error: "this expense is already linked to this tool" });
+
+    const log = {
+      date: new Date(),
+      userId,
+      action: "edit",
+      reason: "linked expense",
+      details: `linked expense to tool`,
+    };
+    const updateTool = await ToolModel.findByIdAndUpdate(
+      { _id: _id },
+      {
+        $push: {
+          linkedOtherExpensesId: expenseId,
+          logs: log,
+        },
+      },
+      { new: true }
+    );
+    if (!updateTool) return res.status(400).send({ error: "tool not found" });
+    return res.status(200).send({ data: updateTool });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+const unlinkToolToExpenses = async (req, res) => {
+  try {
+    const { _id, expenseId, userId } = req.body;
+    if (!_id) return res.status(400).send({ error: "_id is required" });
+    if (!expenseId)
+      return res.status(400).send({ error: "expenseId is required" });
+    if (!userId) return res.status(400).send({ error: "userId is required" });
+    const log = {
+      date: new Date(),
+      userId,
+      action: "edit",
+      reason: "unlinked expense",
+      details: `unlinked expense to tool`,
+    };
+    const updateTool = await ToolModel.findByIdAndUpdate(
+      { _id: _id },
+      {
+        $pull: {
+          linkedOtherExpensesId: expenseId,
+        },
+        $push: {
+          logs: log,
+        },
+      },
+      { new: true }
+    );
+    if (!updateTool) return res.status(400).send({ error: "tool not found" });
+    return res.status(200).send({ data: updateTool });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
 
 module.exports = {
   addToolRemark,
@@ -1456,4 +1907,6 @@ module.exports = {
   restoreToolInspections,
   uploadToolImages,
   deleteToolImage,
+  linkToolToExpenses,
+  unlinkToolToExpenses,
 };

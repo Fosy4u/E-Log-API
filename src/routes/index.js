@@ -120,6 +120,10 @@ let routes = (app) => {
 
   router.get("/user", organisationUsersResolver.getOrganisationUser);
   router.get("/users", organisationUsersResolver.getOrganisationUsers);
+  router.get(
+    "/users/personnels",
+    organisationUsersResolver.getOrganisationPersonnels
+  );
   router.put("/user/edit", organisationUsersResolver.updateOrganisationUser);
   router.put(
     "/user/upload",
@@ -739,6 +743,23 @@ let routes = (app) => {
     authMiddleware,
     handleMoreFieldsUploads,
     toolResolver.updateTool
+  );
+  router.put(
+    "/tool/image/delete",
+    authMiddleware,
+    toolResolver.deleteToolImage
+  );
+  router.put(
+    "/tool/linkToExpenses",
+    authMiddleware,
+
+    toolResolver.linkToolToExpenses
+  );
+  router.put(
+    "/tool/unlinkToExpenses",
+    authMiddleware,
+
+    toolResolver.unlinkToolToExpenses
   );
   router.put(
     "/tool/inspection/edit",

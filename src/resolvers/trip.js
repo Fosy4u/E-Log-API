@@ -836,7 +836,6 @@ const updateTrip = async (req, res) => {
         req.body.estimatedDropOffDate
       ).toISOString();
     }
-   
 
     const updateTrip = await TripModel.findByIdAndUpdate(
       _id,
@@ -1481,7 +1480,10 @@ const tripAction = async (req, res) => {
           .status(400)
           .send({ error: "vehicle is not available or not found" });
       }
-      if (!availableVehicle?.assignedDriverId) {
+      if (
+        !availableVehicle?.assignedDriverId &&
+        trip?.vehicleId !== vehicleId
+      ) {
         return res.status(400).send({
           error:
             "vehicle is not assigned to any driver. You can only assign a vehicle that is currently assigned to a driver",
@@ -1518,6 +1520,12 @@ const tripAction = async (req, res) => {
       const upDateTruckStatus = await TruckModel.findByIdAndUpdate(
         { _id: vehicleId },
         { $set: { status: "On Trip" } },
+        { new: true }
+      );
+      //update previuos vehicle status
+      const updatePreviousVehicle = await TruckModel.findByIdAndUpdate(
+        { _id: trip?.vehicleId },
+        { $set: { status: "Available" } },
         { new: true }
       );
       if (!upDateTruckStatus)
@@ -1697,7 +1705,7 @@ const tripAction = async (req, res) => {
       log = {
         date: new Date(),
         userId,
-        action: "action",
+        action: "cancel",
         details: `trip cancelled`,
         reason: cancelReason,
       };
@@ -1741,7 +1749,7 @@ const tripAction = async (req, res) => {
       log = {
         date: new Date(),
         userId,
-        action: "action",
+        action: "resume",
         details: `trip resumed`,
         reason: resumeReason,
       };

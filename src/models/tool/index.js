@@ -11,12 +11,16 @@ const Tool = new mongoose.Schema({
 
   purchaseDate: { type: String, required: false },
   puchaseExpensesId: { type: String, required: false },
+  linkedOtherExpensesId: { type: [String], required: false, default: [] },
   estimatedReplacementDate: { type: String, required: false },
   vehicleId: { type: String },
+  assignedUserId: { type: String, required: false },
   userId: { type: String, required: true },
   serialNo: { type: String },
   brand: { type: String },
   size: { type: String },
+  model: { type: String },
+  warantyExpiryDate: { type: String },
   status: { type: String, required: true, default: "Active" },
   remarks: {
     type: [{ userId: String, remark: String, date: String }],
@@ -28,6 +32,26 @@ const Tool = new mongoose.Schema({
         status: String,
         date: String,
         userId: String,
+      },
+    ],
+  },
+  assignedUserList: {
+    type: [
+      {
+        date: String,
+        userId: String,
+        assignedUserId: String,
+        action: String,
+      },
+    ],
+  },
+  assignedVehicleList: {
+    type: [
+      {
+        date: String,
+        userId: String,
+        vehicleId: String,
+        action: String,
       },
     ],
   },

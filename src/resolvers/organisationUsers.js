@@ -1,5 +1,6 @@
 const OrganisationProfileModel = require("../models/organisationProfile");
 const OrganisationUserModel = require("../models/organisationUsers");
+const DriverModel = require("../models/driver");
 const { storageRef } = require("../config/firebase"); // reference to our db
 const root = require("../../root");
 const path = require("path");
@@ -129,6 +130,44 @@ const getOrganisationUsers = async (req, res) => {
     return res.status(500).send({ error: error.message });
   }
 };
+const getOrganisationPersonnels = async (req, res) => {
+  try {
+    const { organisationId, disabled } = req.query;
+    if (!organisationId) {
+      return res.status(400).send({ error: "organisationId is required" });
+    }
+    const users = await OrganisationUserModel.find({
+      organisationId,
+      disabled: disabled ? disabled : false,
+    }).lean();
+
+    const peronnels = [];
+    users.forEach((user) => {
+      const person = {
+        ...user,
+        isDriver: false,
+        name: `${user.firstName} ${user.lastName}`,
+      };
+      peronnels.push(person);
+    });
+
+    const drivers = await DriverModel.find({
+      organisationId,
+      disabled: disabled ? disabled : false,
+    }).lean();
+    drivers.forEach((driver) => {
+      const person = {
+        ...driver,
+        isDriver: true,
+        name: `${driver.firstName} ${driver.lastName}`,
+      };
+      peronnels.push(person);
+    });
+    return res.status(200).send({ data: peronnels });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
 const updateOrganisationUser = async (req, res) => {
   try {
     const { _id, email } = req.body;
@@ -193,6 +232,7 @@ module.exports = {
   createOrganisationUsers,
   getOrganisationUser,
   getOrganisationUsers,
+  getOrganisationPersonnels,
   updateOrganisationUser,
   uploadProfilePic,
 };

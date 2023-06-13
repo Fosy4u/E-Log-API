@@ -314,10 +314,10 @@ const canDeleteOrEditOrganisationToolRemark = async (param) => {
   return canPerformAction;
 };
 const canEditOrganisationTool = async (param) => {
-  const { tyreId, userId } = param;
+  const { toolId, userId } = param;
   let canPerformAction = false;
   const tyre = await ToolModel.findOne({
-    _id: tyreId,
+    _id: toolId,
   });
   const organisationId = tyre?.organisationId;
   const user = await OrganisationUserModel.findOne({

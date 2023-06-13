@@ -3,7 +3,6 @@ const ToolRepairModel = require("../models/toolRepair");
 const OrganisationUserModel = require("../models/organisationUsers");
 const ExpensesModel = require("../models/expenses");
 
-
 function getRandomInt(min, max) {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
@@ -313,8 +312,7 @@ const deleteToolRepair = async (req, res) => {
     if (!_id) return res.status(400).send({ error: "_id is required" });
     if (!reason) return res.status(400).send({ error: "reason is required" });
     if (!userId) return res.status(400).send({ error: "userId is required" });
-    if (!toolId)
-      return res.status(400).send({ error: "toolId is required" });
+    if (!toolId) return res.status(400).send({ error: "toolId is required" });
     const toolRepair = await ToolRepairModel.findByIdAndDelete(_id);
     if (!toolRepair)
       return res.status(400).send({ error: "ToolRepair not found" });

@@ -14,6 +14,7 @@ const Driver = new mongoose.Schema({
   status: { type: String, default: "inactive" },
   active: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
+  isDriver: { type: Boolean, value: true },
   imageUrl: {
     link: { type: String, required: false },
     name: { type: String, required: false },
