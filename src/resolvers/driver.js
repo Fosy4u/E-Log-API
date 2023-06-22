@@ -1,4 +1,5 @@
 const DriverModel = require("../models/driver");
+const OrganisationUserModel = require("../models/organisationUsers");
 const { storageRef } = require("../config/firebase"); // reference to our db
 const root = require("../../root");
 const path = require("path");
@@ -54,6 +55,41 @@ const deleteImageFromFirebase = async (name) => {
   }
 };
 
+function getRandomInt(min, max) {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+const generateUniqueIdNumber = async (organisationId) => {
+  let idNumber;
+  let found = true;
+
+  do {
+    const randomVal = getRandomInt(10000, 99999);
+    idNumber = `${randomVal}`;
+    const exist1 = await OrganisationUserModel.findOne(
+      {
+        organisationId,
+        idNumber,
+      },
+      { lean: true }
+    );
+    const exist2 = await DriverModel.findOne(
+      {
+        organisationId,
+        idNumber,
+      },
+      { lean: true }
+    );
+
+    if (exist1 || exist1 !== null || exist2 || exist2 !== null) {
+      found = true;
+    } else {
+      found = false;
+    }
+  } while (found);
+
+  return idNumber.toString();
+};
 const createDriver = async (req, res) => {
   const {
     organisationId,
@@ -90,6 +126,7 @@ const createDriver = async (req, res) => {
         error: "Driver already exists",
       });
     }
+    const idNumber = await generateUniqueIdNumber(organisationId);
     if (req.file) {
       const imageUrl = await addImage(req, req.file.filename);
       const newDriver = new DriverModel({
@@ -101,6 +138,7 @@ const createDriver = async (req, res) => {
         licenseExpiryDate,
         licenseNo,
         imageUrl,
+        idNumber,
       });
       const newContact = await newDriver.save();
       if (newContact) {
@@ -132,6 +170,7 @@ const createDriver = async (req, res) => {
         licenseExpiryDate,
         licenseNo,
         address,
+        idNumber,
       });
       const savedDriver = await newDriver.save();
       if (savedDriver) {
@@ -181,6 +220,7 @@ const getDrivers = async (req, res) => {
         error: "No drivers found",
       });
     }
+
     return res.status(200).json({
       message: "Drivers fetched successfully",
       data: drivers,
@@ -207,6 +247,7 @@ const getDriver = async (req, res) => {
         error: "Driver not found",
       });
     }
+    driver.isDriver = true;
     return res.status(200).json({
       message: "Driver fetched successfully",
       data: driver,

@@ -126,6 +126,32 @@ const createTruck = async (req, res) => {
         .status(400)
         .send({ error: "current logged in user not found" });
     }
+    let assignedPersonnelsId;
+    if (req.body?.assignedPersonnelsId) {
+      assignedPersonnelsId = JSON.parse(req.body.assignedPersonnelsId);
+    }
+    const assignedPersonnelsList = [];
+    if (assignedPersonnelsId?.length > 0) {
+      await Promise.all(
+        assignedPersonnelsId?.map(async (personnelId) => {
+          const validPersonnerlId = await OrganisationUserModel.findById(
+            personnelId
+          );
+          if (!validPersonnerlId) {
+            return res
+              .status(400)
+              .send({ error: "one or more assignedPersonnelsId is invalid" });
+          }
+          assignedPersonnelsList.push({
+            assignedUserId: personnelId,
+            date: new Date(),
+            userId,
+            action: "assigned",
+          });
+        })
+      );
+    }
+
     const log = {
       date: new Date(),
       userId: userId,
@@ -143,6 +169,7 @@ const createTruck = async (req, res) => {
         imageUrl,
         colorTag,
         logs: [log],
+        assignedPersonnelsList,
       });
       const newTruck = await createTruck.save();
 
@@ -175,6 +202,28 @@ const getTruck = async (req, res) => {
     const truck = await TruckModel.findById({ _id: truckId }).lean();
 
     if (!truck) return res.status(400).send({ error: "no truck found" });
+    const assignedPersonnelsList = [];
+
+    if (truck?.assignedPersonnelsList?.length > 0) {
+      await Promise.all(
+        truck?.assignedPersonnelsList?.map(async (personnel) => {
+          const { assignedUserId } = personnel;
+          if (!assignedUserId) return;
+          const user = await OrganisationUserModel.findOne({
+            _id: assignedUserId,
+          }).lean();
+          if (user) {
+            assignedPersonnelsList.push({
+              ...personnel,
+              user,
+            });
+          }
+        })
+      );
+    }
+
+    truck.assignedPersonnelsList = assignedPersonnelsList;
+
     const addStatusToTrucks = await confirmActiveTruck(truck);
     return res.status(200).send({ data: addStatusToTrucks });
   } catch (error) {
@@ -243,7 +292,7 @@ const getTrucks = async (req, res) => {
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
     if (!trucks) return res.status(400).send({ error: "no truck found" });
-
+    
     const addStatusToTrucks = [];
     await Promise.all(
       trucks.map(async (truck) => {
@@ -425,16 +474,34 @@ const editTruck = async (req, res) => {
     if (!userId)
       return res.status(400).send({
         error:
+          "userId is required. Please contact support if this error persist unexpectedly",
+      });
+    if (!_id)
+      return res.status(400).send({
+        error:
+          "truckId is required. Please contact support if this error persist unexpectedly",
+      });
+    let assignedPersonnelsId;
+    if (req.body?.assignedPersonnelsId) {
+      assignedPersonnelsId = JSON.parse(req.body.assignedPersonnelsId);
+    }
+
+    if (!userId)
+      return res.status(400).send({
+        error:
           "userId is required. Please contact NemFra Tech support if this error persist unexpectedly",
       });
     const user = await OrganisationUserModel.findById(userId);
     if (!user) {
       return res.status(400).send({ error: "current user not found" });
     }
+
     const truck = await TruckModel.findById(_id).lean();
+
     const difference = [];
     const oldData = truck;
-    const newData = req.body;
+    const newData = { ...req.body };
+
     for (const key in newData) {
       if (
         oldData[key] !== newData[key] &&
@@ -447,7 +514,8 @@ const editTruck = async (req, res) => {
         key !== "disabled" &&
         key !== "organisationId" &&
         key !== "userId" &&
-        key !== "tyreCount"
+        key !== "tyreCount" &&
+        key !== "assignedPersonnelsId"
       ) {
         difference.push({
           field: key,
@@ -456,11 +524,60 @@ const editTruck = async (req, res) => {
         });
       }
     }
+
     if (req.body?.tyreCount != truck?.tyreCount) {
       difference.push({
         field: "tyre Count",
         old: oldData.tyreCount || "not provided",
         new: newData.tyreCount,
+      });
+    }
+
+    let assignedPersonnelsList = [];
+    if (assignedPersonnelsId?.length > 0) {
+      await Promise.all(
+        assignedPersonnelsId?.map(async (personnelId) => {
+          const validPersonnerlId = await OrganisationUserModel.findById(
+            personnelId
+          );
+          if (!validPersonnerlId) {
+            return res
+              .status(400)
+              .send({ error: "one or more assignedPersonnelsId is invalid" });
+          }
+          const found = oldData?.assignedPersonnelsId?.find(
+            (assigned) => assigned?.assignedUserId === personnelId
+          );
+          if (!found) {
+            assignedPersonnelsList.push({
+              assignedUserId: personnelId,
+              date: new Date(),
+              userId,
+              action: "assigned",
+            });
+            difference.push({
+              field: "assignedPersonnels",
+              old: "-",
+              new: `${validPersonnerlId?.firstName} ${validPersonnerlId?.lastName}  assigned`,
+            });
+          }
+        })
+      );
+
+      oldData?.assignedPersonnelsId?.map(async (assigned) => {
+        const validPersonnerlId = await OrganisationUserModel.findById(
+          assigned?.assignedUserId
+        );
+        const exist = assignedPersonnelsId?.find(
+          (personnelId) => personnelId === assigned?.assignedUserId
+        );
+        if (!exist) {
+          difference.push({
+            field: "assignedPersonnels",
+            old: `${validPersonnerlId?.firstName} ${validPersonnerlId?.lastName} removed from assignedPersonnels`,
+            new: "-",
+          });
+        }
       });
     }
 
@@ -484,7 +601,7 @@ const editTruck = async (req, res) => {
       const update = await TruckModel.findByIdAndUpdate(
         _id,
 
-        { ...req.body, imageUrl, $push: { logs: log } },
+        { ...req.body, imageUrl, assignedPersonnelsList, $push: { logs: log } },
         { new: true }
       );
       if (!update) {
@@ -509,7 +626,7 @@ const editTruck = async (req, res) => {
       const update = await TruckModel.findByIdAndUpdate(
         _id,
 
-        { ...req.body, $push: { logs: log } },
+        { ...req.body, assignedPersonnelsList, $push: { logs: log } },
         { new: true }
       );
 
@@ -681,7 +798,7 @@ const removePartnerTruck = async (req, res) => {
 const activateTruck = async (req, res) => {
   try {
     const { truckId, activate } = req.body;
- 
+
     if (!truckId) {
       return res.status(400).send({ error: "no truckId provided" });
     }
@@ -705,7 +822,7 @@ const activateTruck = async (req, res) => {
     ) {
       return res.status(400).send({ error: "missing truck documents" });
     }
-    
+
     if (
       activate === true &&
       (new Date() >

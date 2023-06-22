@@ -17,6 +17,17 @@ const TripSchema = new mongoose.Schema({
   organisationId: { type: String, required: true },
   isVendorRequested: { type: Boolean, required: true },
   customerId: { type: String },
+  assignedPersonnelsList: {
+    type: [
+      {
+        date: String,
+        userId: String,
+        assignedUserId: [String],
+        action: String,
+      },
+    ],
+  },
+
   cancelReason: { type: String },
   vendorId: { type: String },
   truckType: { type: String },
@@ -45,6 +56,7 @@ const TripSchema = new mongoose.Schema({
     link: { type: String, required: false },
     name: { type: String, required: false },
   },
+
   deliveredWaybilImageUrl: {
     link: { type: String, required: false },
     name: { type: String, required: false },

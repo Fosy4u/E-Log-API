@@ -438,6 +438,43 @@ const getTyreInspections = async (req, res) => {
     });
   }
 };
+const getTyreInspectionsByParams = async (req, res) => {
+  const { organisationId, disabled } = req.query;
+  const params = req.query;
+  try {
+    if (!organisationId) {
+      return res.status(400).json({
+        error: "Please provide organisation id",
+      });
+    }
+    const tyreInspections = await TyreInspectionModel.find({
+      organisationId,
+      disabled: disabled ? disabled : false,
+      ...params,
+    }).lean();
+    if (!tyreInspections)
+      return res
+        .status(401)
+        .json({ error: "Internal error in getting tyre Inspections" });
+
+    const tyreInspectionsWithVehicle = await attachVehicle(
+      tyreInspections,
+      organisationId
+    );
+
+    return res.status(200).send({
+      message: "Tyres fetched successfully",
+      data: tyreInspectionsWithVehicle.sort(function (a, b) {
+        return new Date(b?.date) - new Date(a?.date);
+      }),
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
 const getTyresByVehicleId = async (req, res) => {
   const { organisationId, disabled, vehicleId } = req.query;
   try {
@@ -1387,6 +1424,7 @@ module.exports = {
   createTyre,
   getTyreInspection,
   getTyreInspections,
+  getTyreInspectionsByParams,
   getTyres,
   getTyresByParams,
   getTyresByVehicleId,

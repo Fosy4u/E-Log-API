@@ -32,6 +32,7 @@ const root = require("../../root");
 const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
 const { storageRef } = require("../config/firebase"); // reference to our db
+const OrganisationUserModel = require("../models/organisationUsers");
 
 //saving image to firebase storage
 const addImage = async (req, filename) => {
@@ -83,7 +84,7 @@ const deleteImageFromFirebase = async (name) => {
 };
 
 const addProps = async (trips, editInvoice) => {
-  const tripIds = trips.map((trip) => trip.requestId);
+  const tripIds = trips?.map((trip) => trip.requestId);
   const invoiced = await InvoiceModel.find({
     "requestIds.requestId": { $in: tripIds },
     disabled: false,
@@ -261,6 +262,7 @@ const attachTripProperties = async (trips, organisationId) => {
         lastName: 1,
         phoneNo: 1,
         imageUrl: 1,
+        organisationId: 1,
       }
     ).lean();
     return {
@@ -274,6 +276,8 @@ const attachTripProperties = async (trips, organisationId) => {
         name: getName(driver),
         phoneNo: driver?.phoneNo,
         imageUrl: driver?.imageUrl,
+        ...driver,
+        isDriver: true,
       },
     };
   });
@@ -348,6 +352,29 @@ const getTrip = async (req, res) => {
       return res.status(400).send({ error: "organisationId is required" });
     const trip = await TripModel.findOne({ _id, organisationId }).lean();
     if (!trip) return res.status(400).send({ error: "trip not found" });
+
+    const assignedPersonnelsList = [];
+
+    if (trip?.assignedPersonnelsList?.length > 0) {
+      await Promise.all(
+        trip?.assignedPersonnelsList?.map(async (personnel) => {
+          const { assignedUserId } = personnel;
+          if (!assignedUserId) return;
+          const user = await OrganisationUserModel.findOne({
+            _id: assignedUserId,
+          }).lean();
+          if (user) {
+            assignedPersonnelsList.push({
+              ...personnel,
+              user,
+            });
+          }
+        })
+      );
+    }
+
+    trip.assignedPersonnelsList = assignedPersonnelsList;
+
     const tripsWithProperties = await attachTripProperties(
       [trip],
       organisationId
@@ -402,7 +429,7 @@ const getTrips = async (req, res) => {
       { remarks: 0, logs: 0, timeline: 0 }
     ).lean();
     await Promise.all(
-      trips.map(async (trip) => {
+      trips?.map(async (trip) => {
         const updateTrip = await TripModel.findOneAndUpdate(
           { _id: trip._id },
           { $set: { userId: "62cdd9197b939d4ee658899e" } },
@@ -412,7 +439,60 @@ const getTrips = async (req, res) => {
     );
     const addInvoiceTrip = [];
     await Promise.all(
-      trips.map(async (trip) => {
+      trips?.map(async (trip) => {
+        const resolvedInvoicedTrip = await resolveInvoiceStatus(
+          trip,
+          organisationId
+        );
+        const { isInvoiced, invoice } = resolvedInvoicedTrip;
+        addInvoiceTrip.push({
+          ...trip,
+          isInvoiced,
+          invoice,
+        });
+      })
+    );
+
+    const tripsWithProperties = await attachTripProperties(
+      addInvoiceTrip,
+      organisationId
+    );
+
+    return res.status(200).send({
+      data: tripsWithProperties.sort(function (a, b) {
+        return b.createdAt - a.createdAt;
+      }),
+    });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+const getTripsByParams = async (req, res) => {
+  try {
+    const { organisationId, disabled } = req.query;
+    const param = req.query;
+    if (!organisationId)
+      return res.status(400).send({ error: "organisationId is required" });
+    const trips = await TripModel.find(
+      {
+        organisationId,
+        disabled: disabled || false,
+        ...param,
+      },
+      { remarks: 0, logs: 0, timeline: 0 }
+    ).lean();
+    await Promise.all(
+      trips?.map(async (trip) => {
+        const updateTrip = await TripModel.findOneAndUpdate(
+          { _id: trip._id },
+          { $set: { userId: "62cdd9197b939d4ee658899e" } },
+          { new: true }
+        );
+      })
+    );
+    const addInvoiceTrip = [];
+    await Promise.all(
+      trips?.map(async (trip) => {
         const resolvedInvoicedTrip = await resolveInvoiceStatus(
           trip,
           organisationId
@@ -574,6 +654,7 @@ const createTrip = async (req, res) => {
     amount,
     vendorId,
     isVendorRequested,
+    assignedPersonnelsId,
   } = req.body;
   try {
     if (!organisationId)
@@ -597,6 +678,27 @@ const createTrip = async (req, res) => {
       return res.status(400).send({ error: "quantity is required" });
     if (isVendorRequested && !vendorId)
       return res.status(400).send({ error: "vendorId is required" });
+    const assignedPersonnelsList = [];
+    if (assignedPersonnelsId?.length > 0) {
+      await Promise.all(
+        assignedPersonnelsId?.map(async (personnelId) => {
+          const validPersonnerlId = await OrganisationUserModel.findById(
+            personnelId
+          );
+          if (!validPersonnerlId) {
+            return res
+              .status(400)
+              .send({ error: "one or more assignedPersonnelsId is invalid" });
+          }
+          assignedPersonnelsList.push({
+            assignedUserId: personnelId,
+            date: new Date(),
+            userId,
+            action: "assigned",
+          });
+        })
+      );
+    }
 
     const log = {
       date: new Date(),
@@ -649,6 +751,8 @@ const createTrip = async (req, res) => {
       requestId,
       timeline,
       logs: [log],
+      organisationId,
+      assignedPersonnelsList,
     };
 
     params.pickupDate = moment(req.body.pickupDate).toISOString();
@@ -677,7 +781,15 @@ const createTrip = async (req, res) => {
 
 const updateTrip = async (req, res) => {
   try {
-    const { _id, organisationId, userId, vendorId, amount, date } = req.body;
+    const {
+      _id,
+      organisationId,
+      userId,
+      vendorId,
+      amount,
+      date,
+      assignedPersonnelsId,
+    } = req.body;
     if (!_id) return res.status(400).send({ error: "trip _id is required" });
     if (!organisationId)
       return res.status(400).send({ error: "organisationId is required" });
@@ -747,7 +859,8 @@ const updateTrip = async (req, res) => {
         key !== "userId" &&
         key !== "customerId" &&
         key !== "vendorId" &&
-        key !== "vehicleId"
+        key !== "vehicleId" &&
+        key !== "assignedPersonnelsId"
       ) {
         difference.push({
           field: key,
@@ -817,6 +930,53 @@ const updateTrip = async (req, res) => {
         new: newVehicle?.regNo,
       });
     }
+    let assignedPersonnelsList = [];
+    if (assignedPersonnelsId?.length > 0) {
+      await Promise.all(
+        assignedPersonnelsId?.map(async (personnelId) => {
+          const validPersonnerlId = await OrganisationUserModel.findById(
+            personnelId
+          );
+          if (!validPersonnerlId) {
+            return res
+              .status(400)
+              .send({ error: "one or more assignedPersonnelsId is invalid" });
+          }
+          assignedPersonnelsList.push({
+            assignedUserId: personnelId,
+            date: new Date(),
+            userId,
+            action: "assigned",
+          });
+          const found = oldData?.assignedPersonnelsId?.find(
+            (assigned) => assigned?.assignedUserId === personnelId
+          );
+          if (!found) {
+            difference.push({
+              field: "assignedPersonnels",
+              old: "-",
+              new: `${validPersonnerlId?.firstName} ${validPersonnerlId?.lastName}  assigned`,
+            });
+          }
+        })
+      );
+
+      oldData?.assignedPersonnelsId?.map(async (assigned) => {
+        const validPersonnerlId = await OrganisationUserModel.findById(
+          assigned?.assignedUserId
+        );
+        const exist = assignedPersonnelsId?.find(
+          (personnelId) => personnelId === assigned?.assignedUserId
+        );
+        if (!exist) {
+          difference.push({
+            field: "assignedPersonnels",
+            old: `${validPersonnerlId?.firstName} ${validPersonnerlId?.lastName} removed from assignedPersonnels`,
+            new: "-",
+          });
+        }
+      });
+    }
 
     const log = {
       date: new Date(),
@@ -829,6 +989,9 @@ const updateTrip = async (req, res) => {
 
     const params = {
       ...req.body,
+      ...(assignedPersonnelsId?.length > 0 && {
+        assignedPersonnelsList: assignedPersonnelsList,
+      }),
     };
     params.pickupDate = moment(req.body.pickupDate).toISOString();
     if (req.body.estimatedDropOffDate) {
@@ -839,7 +1002,13 @@ const updateTrip = async (req, res) => {
 
     const updateTrip = await TripModel.findByIdAndUpdate(
       _id,
-      { ...params, $push: { logs: log } },
+      {
+        ...params,
+
+        $push: {
+          logs: log,
+        },
+      },
       { new: true }
     );
     if (updateTrip) {
@@ -1772,6 +1941,7 @@ module.exports = {
   createTrip,
   getTrip,
   getTrips,
+  getTripsByParams,
   unInvoicedUnpaidTrips,
   getTripLogs,
   addTripRemark,
@@ -1786,4 +1956,5 @@ module.exports = {
   getTripByRequestId,
   getTripsByVehicleId,
   getTripsByDriverId,
+
 };

@@ -259,16 +259,6 @@ const formatInvoice = async (invoice) => {
       getInvoicePaidAndAmountDue(request, invoice?.invoiceId)
     );
     const { amountDue, paid } = calc;
-    let status = "Draft";
-    if (invoice?.sentToCustomer) {
-      status = "Sent";
-    }
-    if (paid > 0 && amountDue === 0) {
-      status = "Paid";
-    }
-    if (paid > 0 && amountDue > 0) {
-      status = "Partially Paid";
-    }
 
     const invObj = {
       vendor: {
@@ -280,7 +270,7 @@ const formatInvoice = async (invoice) => {
         name: getName(customerDetail),
         ...customerDetail,
       },
-      status,
+
       trip: {
         ...tripDetail,
         amountDue,
@@ -302,6 +292,16 @@ const formatInvoice = async (invoice) => {
   const totalPaid = collection.reduce((acc, trip) => {
     return acc + trip.trip.paid;
   }, 0);
+  let status = "Draft";
+  if (invoice?.sentToCustomer) {
+    status = "Sent";
+  }
+  if (totalPaid > 0 && totalAmountDue === 0) {
+    status = "Paid";
+  }
+  if (totalPaid > 0 && totalAmountDue > 0) {
+    status = "Partially Paid";
+  }
   const isVendorRequested = collection[0]?.vendor?._id ? true : false;
   return {
     ...invoice,
@@ -310,7 +310,7 @@ const formatInvoice = async (invoice) => {
     vendor: collection[0]?.vendor,
     tripsDetails: collection,
     isVendorRequested,
-    status: collection[0]?.status,
+    status,
     sentTo: collection[0]?.vendor?._id
       ? collection[0]?.vendor
       : collection[0]?.customer,
@@ -1048,7 +1048,6 @@ const getInvoiceShareCode = async (req, res) => {
     const code = await generateUniqueShareCode(organisationId);
     if (!code)
       return res.status(400).send({ error: "Error in generating share code" });
-   
 
     const shareCode = {
       code,
