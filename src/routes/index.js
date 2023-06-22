@@ -118,13 +118,49 @@ let routes = (app) => {
     OrganisationBranchResolver.deleteBranch
   );
 
+  router.post(
+    "/user/create",
+    authMiddleware,
+    upload,
+    organisationUsersResolver.createOrganisationUsers
+  );
   router.get("/user", organisationUsersResolver.getOrganisationUser);
+  router.get("/user/id", organisationUsersResolver.getOrganisationUserById);
   router.get("/users", organisationUsersResolver.getOrganisationUsers);
   router.get(
     "/users/personnels",
     organisationUsersResolver.getOrganisationPersonnels
   );
-  router.put("/user/edit", organisationUsersResolver.updateOrganisationUser);
+  router.put(
+    "/user/edit",
+    upload,
+    organisationUsersResolver.updateOrganisationUser
+  );
+  router.put(
+    "/user/userUnAssignments",
+    upload,
+    organisationUsersResolver.userUnAssignments
+  );
+  router.put(
+    "/user/signIn",
+    upload,
+    organisationUsersResolver.recordUserSignIn
+  );
+  router.put(
+    "/user/userAssignments",
+    upload,
+    organisationUsersResolver.userAssignments
+  );
+  router.put(
+    "/user/delete",
+    
+    organisationUsersResolver.deleteOrganisationUser
+  );
+  router.put(
+    "/user/restore",
+    
+    organisationUsersResolver.restoreOrganisationUser
+  );
   router.put(
     "/user/upload",
     upload,
@@ -368,6 +404,7 @@ let routes = (app) => {
     tripResolver.createTrip
   );
   router.get("/trips", authMiddleware, tripResolver.getTrips);
+  router.get("/trips/params", authMiddleware, tripResolver.getTripsByParams,);
   router.get(
     "/trips/vehicleId",
     authMiddleware,
@@ -607,6 +644,11 @@ let routes = (app) => {
     "/tyres/inspections/",
     authMiddleware,
     tyreResolver.getTyreInspections
+  );
+  router.get(
+    "/tyres/inspections/params",
+    authMiddleware,
+    tyreResolver.getTyreInspectionsByParams
   );
   router.get(
     "/tyres/inspection/",

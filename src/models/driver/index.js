@@ -11,6 +11,7 @@ const Driver = new mongoose.Schema({
   licenseExpiryDate: { type: String, required: true },
   licenseNo: { type: String, required: true },
   assignedTruckId: { type: String, required: false },
+  idNumber: { type: String, required: true, unique: true },
   status: { type: String, default: "inactive" },
   active: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },

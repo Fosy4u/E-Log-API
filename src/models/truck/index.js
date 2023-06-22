@@ -40,6 +40,7 @@ const CarDocs = new mongoose.Schema({
 const TruckSchema = new mongoose.Schema({
   regNo: { type: String, required: true, unique: true },
   active: { type: Boolean, default: false },
+  organisationId: { type: String, required: true },
   disabled: { type: Boolean, default: false },
   status: { type: String, default: "Inactive" },
   chasisNo: { type: String, required: true, unique: true },
@@ -53,6 +54,16 @@ const TruckSchema = new mongoose.Schema({
   colorTag: { type: String, required: true },
   carDocs: CarDocs,
   maxLoad: { type: String, required: true },
+  assignedPersonnelsList: {
+    type: [
+      {
+        date: String,
+        userId: String,
+        assignedUserId: [String],
+        action: String,
+      },
+    ],
+  },
   truckType: { type: String, required: true },
   logs: [
     {

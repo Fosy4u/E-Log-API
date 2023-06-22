@@ -17,7 +17,7 @@ const {
   canCreateOrganisationTool,
 } = require("../helpers/actionPermission");
 const { deleteLocalFile } = require("../helpers/utils");
-const e = require("express");
+
 
 //saving image to firebase storage
 const addImage = async (destination, filename) => {
@@ -39,7 +39,7 @@ const addImage = async (destination, filename) => {
       }
     );
     url = { link: storage[0].metadata.mediaLink, name: filename };
-    console.log("source is", source);
+
     const deleteSourceFile = await deleteLocalFile(source);
     const deleteResizedFile = await deleteLocalFile(
       path.resolve(destination, "resized", filename)
@@ -495,6 +495,10 @@ const getTool = async (req, res) => {
       );
     }
     currentTool.statusList = statusListWithUser.sort(function (a, b) {
+      // sort by date and action
+      if (a?.date === b?.date) {
+        return a?.action - b?.action;
+      }
       return new Date(b?.date) - new Date(a?.date);
     });
     const assignedVehicleList = currentTool?.assignedVehicleList || [];
@@ -539,7 +543,7 @@ const getTool = async (req, res) => {
       a,
       b
     ) {
-      return new Date(b?.date) - new Date(a?.date);
+      
     });
 
     const assignedUserList = currentTool?.assignedUserList || [];
@@ -917,6 +921,14 @@ const updateTool = async (req, res) => {
     let assignedUserObj = {};
     let previousAssignedVehicleObj = {};
     let assignedVehicleObj = {};
+    if (assignedUserId && assignedUserId !== null && assignedUserId !== "") {
+      assignedUserObj = {
+        userId,
+        date: new Date(),
+        action: "assigned",
+        assignedUserId,
+      };
+    }
     if (assignedUserId && assignedUserId !== oldData?.assignedUserId) {
       if (
         oldData?.assignedUserId &&
@@ -929,34 +941,24 @@ const updateTool = async (req, res) => {
           action: "unassigned",
           assignedUserId: oldData?.assignedUserId,
         };
-        console.log("previousAssignedUserObj", previousAssignedUserObj);
-      }
-
-      if (assignedUserId && assignedUserId !== null && assignedUserId !== "") {
-        assignedUserObj = {
-          userId,
-          date: new Date(),
-          action: "assigned",
-          assignedUserId,
-        };
       }
     }
 
     if (vehicleId && vehicleId !== oldData?.vehicleId) {
-      if (oldData?.vehicleId) {
-        previousAssignedVehicleObj = {
-          userId,
-          date: new Date(),
-          action: "unassigned",
-          vehicleId: oldData?.vehicleId,
-        };
-      }
       if (vehicleId) {
         assignedVehicleObj = {
           userId,
           date: new Date(),
           action: "assigned",
           vehicleId,
+        };
+      }
+      if (oldData?.vehicleId) {
+        previousAssignedVehicleObj = {
+          userId,
+          date: new Date(),
+          action: "unassigned",
+          vehicleId: oldData?.vehicleId,
         };
       }
     }
