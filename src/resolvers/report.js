@@ -177,12 +177,13 @@ const addBalanceRevenue = async (sortedValues) => {
   const newSortedValues = [];
   for (const value of sortedValues) {
     if (value.credit) {
-      balance += value.credit;
+      balance = balance + value.credit;
     } else if (value.debit) {
-      balance -= value.debit;
+      balance = balance - value.debit;
     }
     newSortedValues.push({ ...value, balance });
   }
+
   return newSortedValues;
 };
 const getNonTripPayments = async (organisationId, fromDate, toDate) => {
@@ -240,6 +241,7 @@ const getAllProfitAndLoss = async (req, res) => {
         vendorId: 1,
         customerId: 1,
         pickupDate: 1,
+        shortage: 1,
       }
     ).lean();
 
@@ -274,6 +276,37 @@ const getAllProfitAndLoss = async (req, res) => {
         resolveTripIncome(trip, "balanceRevenue")
       )
     );
+    const shortagedTrips = await TripModel.find(
+      {
+        organisationId,
+        shortage: { $exists: true },
+        disabled: false,
+        dropOffDate: {
+          $gte: from,
+          $lte: to,
+        },
+      },
+      {
+        amount: 1,
+        requestId: 1,
+        waybillNumber: 1,
+        pickupDate: 1,
+        shortage: 1,
+      }
+    ).lean();
+
+    const shortages = shortagedTrips.map((trip) => {
+      const { shortage, pickupDate, requestId, waybillNumber, _id } = trip;
+      return {
+        debit: Number(shortage.shortageAmount),
+        date: moment(pickupDate).format("YYYY-MM-DD"),
+        _id,
+        requestId,
+        waybillNumber,
+        expenseType: "Trip Shortage",
+        ...shortage,
+      };
+    });
 
     to.setUTCHours(23, 59, 59, 999);
     const expenses = await ExpensesModel.find(
@@ -298,9 +331,10 @@ const getAllProfitAndLoss = async (req, res) => {
       ...balanceRevenueTrips,
       ...resolvedExpenses,
       ...nonTripPayments,
+      ...shortages,
     ];
     const sortedValues = allValues.sort(
-      (a, b) => new Date(a.pickupDate) - new Date(b.pickupDate)
+      (a, b) => new Date(a.date) - new Date(b.date)
     );
 
     const sortedValuesWithBalance = await Promise.resolve(
@@ -314,16 +348,23 @@ const getAllProfitAndLoss = async (req, res) => {
       return acc;
     }, 0);
     const totalExpenses = sortedValuesWithBalance.reduce((acc, value) => {
-      if (value.debit) {
+      if (value.debit && value.expenseType !== "Trip Shortage") {
         return acc + value.debit;
       }
       return acc;
     }, 0);
-    const totalProfit = totalRevenue - totalExpenses;
+    const totalShortages = sortedValuesWithBalance.reduce((acc, value) => {
+      if (value.debit && value.expenseType === "Trip Shortage") {
+        return acc + value.debit;
+      }
+      return acc;
+    }, 0);
+    const totalProfit = totalRevenue - totalExpenses - totalShortages;
     const param = {
       totalRevenue,
       totalExpenses,
       totalProfit,
+      totalShortages,
       data: sortedValuesWithBalance,
     };
     res.status(200).send({ data: param });
@@ -344,6 +385,7 @@ const resolveTripProfitAndLoss = async (trips, expenses) => {
       maxLoad,
       vehicleId,
       createdAt,
+      shortage,
     } = trip;
     const tripExpense = expenses.filter(
       (expense) => expense.tripId === requestId
@@ -351,7 +393,8 @@ const resolveTripProfitAndLoss = async (trips, expenses) => {
     const totalExpense = tripExpense.reduce((acc, expense) => {
       return acc + expense.amount;
     }, 0);
-    const profit = amount - totalExpense;
+    const totalShortage = Number(shortage?.shortageAmount) || 0;
+    const profit = amount - totalExpense - totalShortage;
     let vehicle;
     if (vehicleId) {
       vehicle = await TruckModel.findById(vehicleId);
@@ -365,6 +408,7 @@ const resolveTripProfitAndLoss = async (trips, expenses) => {
       profit,
       requestId,
       totalRevenue: amount,
+      shortageAmount: totalShortage,
       status,
       maxLoad,
       ...(vehicle && { vehicle: vehicle.regNo }),
@@ -408,6 +452,7 @@ const getProfitAndLossByTrip = async (req, res) => {
         pickupDate: 1,
         maxLoad: 1,
         status: 1,
+        shortage: 1,
       }
     ).lean();
 
@@ -441,7 +486,13 @@ const getProfitAndLossByTrip = async (req, res) => {
       }
       return acc;
     }, 0);
-    const totalProfit = totalRevenue - totalExpenses;
+    const totalShortages = sortedValues.reduce((acc, value) => {
+      if (value.shortageAmount) {
+        return acc + value.shortageAmount;
+      }
+      return acc;
+    }, 0);
+    const totalProfit = totalRevenue - totalExpenses - totalShortages;
 
     const totalMaxLoad = sortedValues.reduce((acc, value) => {
       if (value.maxLoad) {
@@ -459,6 +510,7 @@ const getProfitAndLossByTrip = async (req, res) => {
     const param = {
       totalRevenue,
       totalExpenses,
+      totalShortages,
       totalProfit,
       data: sortedValues,
       totalMaxLoad,
@@ -531,7 +583,13 @@ const getMostRecentProfitAndLossByTrip = async (req, res) => {
       }
       return acc;
     }, 0);
-    const totalProfit = totalRevenue - totalExpenses;
+    const totalShortages = sortedValues.reduce((acc, value) => {
+      if (value.shortageAmount) {
+        return acc + value.shortageAmount;
+      }
+      return acc;
+    }, 0);
+    const totalProfit = totalRevenue - totalExpenses - totalShortages;
 
     const totalMaxLoad = sortedValues.reduce((acc, value) => {
       if (value.maxLoad) {
@@ -549,6 +607,7 @@ const getMostRecentProfitAndLossByTrip = async (req, res) => {
     const param = {
       totalRevenue,
       totalExpenses,
+      totalShortages,
       totalProfit,
       data: sortedValues,
       totalMaxLoad,
@@ -575,15 +634,20 @@ const resolveProfitAndLossByVehicle = (vehicles, trips, expenses) => {
     const totalVehicleRevenue = vehicleTrips.reduce((acc, trip) => {
       return acc + trip.amount;
     }, 0);
+    const totalVehicleShortage = vehicleTrips.reduce((acc, trip) => {
+      return acc + Number(trip?.shortage?.shortageAmount) || 0;
+    }, 0);
     const totalVehicleExpense = vehicleExpenses.reduce((acc, expense) => {
       return acc + expense.amount;
     }, 0);
-    const totalProfit = totalVehicleRevenue - totalVehicleExpense;
+    const totalProfit =
+      totalVehicleRevenue - totalVehicleExpense - totalVehicleShortage;
     profitAndLossByVehicle.push({
       _id,
       regNo,
       totalVehicleRevenue,
       totalVehicleExpense,
+      totalVehicleShortage,
       totalProfit,
       colorTag,
     });
@@ -626,6 +690,7 @@ const getProfitAndLossByVehicle = async (req, res) => {
         customerId: 1,
         pickupDate: 1,
         vehicleId: 1,
+        shortage: 1,
       }
     ).lean();
 
@@ -682,11 +747,18 @@ const getProfitAndLossByVehicle = async (req, res) => {
       }
       return acc;
     }, 0);
-    const totalProfit = totalRevenue - totalExpenses;
+    const totalShortages = sortedValues.reduce((acc, value) => {
+      if (value.totalVehicleShortage) {
+        return acc + value.totalVehicleShortage;
+      }
+      return acc;
+    }, 0);
+    const totalProfit = totalRevenue - totalExpenses - totalShortages;
     const param = {
       totalRevenue,
       totalExpenses,
       totalProfit,
+      totalShortages,
       data: sortedValues,
     };
     res.status(200).send({ data: param });
@@ -814,8 +886,22 @@ const getAnalyticsByVehicleID = async (req, res) => {
         actualFuelCost: 1,
         estimatedDropOffDate: 1,
         dropOffDate: 1,
+        shortage: 1,
       }
     ).lean();
+    const shortagedTrips = trips.filter((trip) => trip.shortage);
+    const shortages = shortagedTrips.map((trip) => {
+      const { shortage, pickupDate, requestId, waybillNumber, _id } = trip;
+      return {
+        debit: Number(shortage.shortageAmount),
+        date: moment(pickupDate).format("YYYY-MM-DD"),
+        _id,
+        requestId,
+        waybillNumber,
+        expenseType: "Trip Shortage",
+        ...shortage,
+      };
+    });
 
     to.setUTCHours(23, 59, 59, 999);
     const expenses = await ExpensesModel.find(
@@ -858,7 +944,13 @@ const getAnalyticsByVehicleID = async (req, res) => {
       }
       return acc;
     }, 0);
-    const totalProfit = totalRevenue - totalExpenses;
+    const totalShortages = getResolvedProfitAndLoss.reduce((acc, value) => {
+      if (value.totalVehicleShortage) {
+        return acc + value.totalVehicleShortage;
+      }
+      return acc;
+    }, 0);
+    const totalProfit = totalRevenue - totalExpenses - totalShortages;
     //rank expenses by expense type in percentage
     const vehicleExpensesByType = [];
     expenses.reduce((acc, value) => {
@@ -879,7 +971,8 @@ const getAnalyticsByVehicleID = async (req, res) => {
       }
       return acc;
     }, vehicleExpensesByType);
-    const combined = [...trips, ...expenses];
+    vehicleExpensesByType.push;
+    const combined = [...trips, ...expenses, ...shortages];
     await Promise.all(
       combined.map(async (item) => {
         if (item.userId) {
@@ -901,18 +994,33 @@ const getAnalyticsByVehicleID = async (req, res) => {
     );
 
     const data = combined.reduce((acc, value) => {
-      const { pickupDate, date, amount, expensesId, requestId } = value;
-      if (requestId) {
+      const {
+        pickupDate,
+        date,
+        amount,
+        expensesId,
+        requestId,
+        shortageAmount,
+      } = value;
+      if (requestId && !shortageAmount) {
         acc.push({
           date: pickupDate,
           credit: amount,
           ...value,
         });
       }
+
       if (expensesId) {
         acc.push({
           date: date,
           debit: amount,
+          ...value,
+        });
+      }
+      if (shortageAmount) {
+        acc.push({
+          date: pickupDate,
+          debit: shortageAmount,
           ...value,
         });
       }
@@ -923,6 +1031,7 @@ const getAnalyticsByVehicleID = async (req, res) => {
     const param = {
       totalRevenue,
       totalExpenses,
+      totalShortages,
       totalProfit,
       vehicle,
       data: data.sort((a, b) => a.date - b.date),
@@ -992,8 +1101,23 @@ const getAnalyticsByDriverID = async (req, res) => {
         actualFuelCost: 1,
         estimatedDropOffDate: 1,
         dropOffDate: 1,
+        shortage: 1,
       }
     ).lean();
+
+    const shortagedTrips = trips.filter((trip) => trip.shortage);
+    const shortages = shortagedTrips.map((trip) => {
+      const { shortage, pickupDate, requestId, waybillNumber, _id } = trip;
+      return {
+        debit: Number(shortage.shortageAmount),
+        date: moment(pickupDate).format("YYYY-MM-DD"),
+        _id,
+        requestId,
+        waybillNumber,
+        expenseType: "Trip Shortage",
+        ...shortage,
+      };
+    });
     const tripIds = trips.map((item) => item.requestId);
 
     to.setUTCHours(23, 59, 59, 999);
@@ -1034,7 +1158,15 @@ const getAnalyticsByDriverID = async (req, res) => {
       }
       return acc;
     }, 0);
-    const totalProfit = totalRevenue - totalExpenses;
+
+    const totalShortages = getResolvedProfitAndLoss.reduce((acc, value) => {
+      if (value.shortageAmount) {
+        return acc + Number(value.shortageAmount);
+      }
+      return acc;
+    }, 0);
+
+    const totalProfit = totalRevenue - totalExpenses - totalShortages;
     //rank expenses by expense type in percentage
     const expensesByType = expenses.reduce((acc, value) => {
       if (value.expenseType) {
@@ -1055,7 +1187,7 @@ const getAnalyticsByDriverID = async (req, res) => {
       return acc;
     }, []);
 
-    const combined = [...trips, ...expenses];
+    const combined = [...trips, ...expenses, ...shortages];
     await Promise.all(
       combined.map(async (item) => {
         if (item.userId) {
@@ -1076,8 +1208,15 @@ const getAnalyticsByDriverID = async (req, res) => {
       })
     );
     const data = combined.reduce((acc, value) => {
-      const { pickupDate, date, amount, expensesId, requestId } = value;
-      if (requestId) {
+      const {
+        pickupDate,
+        date,
+        amount,
+        expensesId,
+        requestId,
+        shortageAmount,
+      } = value;
+      if (requestId && !shortageAmount) {
         acc.push({
           date: pickupDate,
           credit: amount,
@@ -1091,6 +1230,13 @@ const getAnalyticsByDriverID = async (req, res) => {
           ...value,
         });
       }
+      if (shortageAmount) {
+        acc.push({
+          date: pickupDate,
+          debit: shortageAmount,
+          ...value,
+        });
+      }
       return acc;
     }, []);
     const fuel = analySeFuel(trips);
@@ -1098,6 +1244,7 @@ const getAnalyticsByDriverID = async (req, res) => {
     const param = {
       totalRevenue,
       totalExpenses,
+      totalShortages,
       totalProfit,
       data: data.sort((a, b) => a.date - b.date),
       tripCount: trips.length,
@@ -1136,6 +1283,7 @@ const getAnalyticsByTripID = async (req, res) => {
       actualFuelCost: 1,
       estimatedDropOffDate: 1,
       dropOffDate: 1,
+      shortage: 1,
     }).lean();
 
     if (!trip?.requestId) {
@@ -1158,6 +1306,13 @@ const getAnalyticsByTripID = async (req, res) => {
         userId: 1,
       }
     ).lean();
+    const shortage = trip.shortage;
+    if (shortage) {
+      shortage.expenseType = "Shortage";
+      shortage.requestId = trip.requestId;
+      shortage.amount = shortage.shortageAmount;
+    }
+    const shortageAmount = trip?.shortage?.shortageAmount || 0;
 
     const totalRevenue = trip.amount || 0;
     const totalExpenses = expenses.reduce((acc, value) => {
@@ -1166,7 +1321,7 @@ const getAnalyticsByTripID = async (req, res) => {
       }
       return acc;
     }, 0);
-    const totalProfit = totalRevenue - totalExpenses;
+    const netProfit = totalRevenue - totalExpenses - shortageAmount;
     //rank expenses by expense type in percentage
     const expensesByType = expenses.reduce((acc, value) => {
       if (value.expenseType) {
@@ -1186,8 +1341,14 @@ const getAnalyticsByTripID = async (req, res) => {
       }
       return acc;
     }, []);
-
-    const combined = [trip, ...expenses];
+    if (shortage) {
+      expensesByType.push({
+        expenseType: shortage.expenseType,
+        amount: shortage.shortageAmount,
+        percentage: (shortage.shortageAmount / totalExpenses) * 100,
+      });
+    }
+    const combined = [trip, ...expenses, { ...shortage }];
     await Promise.all(
       combined.map(async (item) => {
         if (item.userId) {
@@ -1208,7 +1369,14 @@ const getAnalyticsByTripID = async (req, res) => {
       })
     );
     const data = combined.reduce((acc, value) => {
-      const { pickupDate, date, amount, expensesId, requestId } = value;
+      const {
+        pickupDate,
+        date,
+        amount,
+        expensesId,
+        requestId,
+        shortageAmount,
+      } = value;
       if (requestId) {
         acc.push({
           date: pickupDate,
@@ -1220,6 +1388,13 @@ const getAnalyticsByTripID = async (req, res) => {
         acc.push({
           date: date,
           debit: amount,
+          ...value,
+        });
+      }
+      if (shortageAmount) {
+        acc.push({
+          date: date,
+          debit: shortageAmount,
           ...value,
         });
       }
@@ -1252,7 +1427,8 @@ const getAnalyticsByTripID = async (req, res) => {
     const param = {
       totalRevenue,
       totalExpenses,
-      totalProfit,
+      totalShortage: shortage?.amount,
+      netProfit,
       data: data.sort((a, b) => a.date - b.date),
       expensesByType,
       fuel,
@@ -1679,19 +1855,50 @@ const getAllExpenses = async (req, res) => {
       },
       { amount: 1, date: 1, expensesId: 1, expenseType: 1 }
     ).lean();
+    const trips = await TripModel.find(
+      {
+        organisationId,
+        pickupDate: {
+          $gte: from,
+          $lte: to,
+        },
+        disabled: false,
+        shortage: { $exists: true },
+      },
+      { pickupDate: 1, requestId: 1, shortage: 1 }
+    ).lean();
 
-    const sortedValues = expenses.sort(
+    const shortagedTrips = trips.map((trip) => {
+      const { pickupDate, requestId, shortage } = trip;
+      return {
+        date: pickupDate,
+        requestId,
+        amount: Number(shortage?.shortageAmount || 0),
+        expenseType: "Trip Shortage",
+      };
+    });
+
+    const sortedValues = [...expenses, ...shortagedTrips].sort(
       (a, b) => new Date(a.date) - new Date(b.date)
     );
 
-    const totalExpenses = sortedValues.reduce((acc, value) => {
+    const totalShortage = shortagedTrips.reduce((acc, value) => {
       if (value.amount) {
         return acc + value.amount;
       }
       return acc;
     }, 0);
+    const totalExpenses = expenses.reduce((acc, value) => {
+      if (value.amount) {
+        return acc + value.amount;
+      }
+      return acc;
+    }, 0);
+    const total = totalShortage + totalExpenses;
     const param = {
       totalExpenses,
+      totalShortage,
+      total,
       data: sortedValues,
     };
 
@@ -1751,10 +1958,11 @@ const getNonTripExpenses = async (req, res) => {
 const resoleTripsAndExpenses = (trips, expenses) => {
   const expensesList = [];
   for (let i = 0; i < trips.length; i++) {
-    const { _id, requestId, waybillNumber, pickupDate } = trips[i];
+    const { _id, requestId, waybillNumber, pickupDate, shortage } = trips[i];
     const tripExpenses = expenses.filter(
       (expense) => expense.tripId === requestId
     );
+    const tripShortage = Number(shortage?.shortageAmount) || 0;
     const totalTripExpenses = tripExpenses.reduce((acc, value) => {
       if (value.amount) {
         return acc + Number(value.amount);
@@ -1767,6 +1975,7 @@ const resoleTripsAndExpenses = (trips, expenses) => {
       requestId,
       waybillNumber,
       date: pickupDate,
+      tripShortage,
       totalTripExpenses,
     });
   }
@@ -1830,7 +2039,7 @@ const getAllExpensesByTrip = async (req, res) => {
           $lte: to,
         },
       },
-      { requestId: 1, waybillNumber: 1, pickupDate: 1 }
+      { requestId: 1, waybillNumber: 1, pickupDate: 1, shortage: 1 }
     ).lean();
 
     const mergedTripsAndExpenses = resoleTripsAndExpenses(trips, expenses);
@@ -1845,8 +2054,17 @@ const getAllExpensesByTrip = async (req, res) => {
       }
       return acc;
     }, 0);
+    const totalShortages = sortedValues.reduce((acc, value) => {
+      if (value.tripShortage) {
+        return acc + value.tripShortage;
+      }
+      return acc;
+    }, 0);
+    const total = totalExpenses + totalShortages;
     const param = {
       totalExpenses,
+      totalShortages,
+      total,
       data: sortedValues,
     };
 

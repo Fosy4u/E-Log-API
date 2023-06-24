@@ -9,6 +9,14 @@ const TimeLineActionSchema = new mongoose.Schema({
   status: { type: String, required: true },
 });
 
+const ShortageSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  quantity: { type: String, required: true },
+  unit : { type: String, required: true },
+  shortageAmount: { type: Number, required: true , default: 0},
+  shortageReason: { type: String, required: false },
+  userId: { type: String, required: true },
+});
 const TripSchema = new mongoose.Schema({
   disabled: { type: Boolean, default: false },
   requestId: { type: String, required: true, unique: true },
@@ -27,6 +35,7 @@ const TripSchema = new mongoose.Schema({
       },
     ],
   },
+  shortage : ShortageSchema,
 
   cancelReason: { type: String },
   vendorId: { type: String },

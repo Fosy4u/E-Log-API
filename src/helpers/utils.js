@@ -17,6 +17,10 @@ const numberWithCommas = (x) => {
 const getPaidAndAmountDue = async (trip) => {
   let paid = 0;
   let amountDue = trip?.amount;
+  const shortageAmount = trip?.shortage?.shortageAmount;
+  if (shortageAmount) {
+    amountDue = amountDue - shortageAmount;
+  }
 
   const { requestId } = trip;
   if (!requestId) return { paid, amountDue };
@@ -43,6 +47,11 @@ const getPaidAndAmountDue = async (trip) => {
 const getPaidAndAmountDueExcludeInvoicePayment = async (trip) => {
   let paid = 0;
   let amountDue = trip?.amount;
+  const shortageAmount = trip?.shortage?.shortageAmount;
+  if (shortageAmount) {
+    amountDue = amountDue - shortageAmount;
+  }
+
 
   const { requestId } = trip;
   if (!requestId) return { paid, amountDue };
