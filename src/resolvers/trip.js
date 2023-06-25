@@ -352,6 +352,18 @@ const getTrip = async (req, res) => {
       return res.status(400).send({ error: "organisationId is required" });
     const trip = await TripModel.findOne({ _id, organisationId }).lean();
     if (!trip) return res.status(400).send({ error: "trip not found" });
+    const shortage = trip?.shortage;
+    if (shortage) {
+      const userId = shortage?.userId;
+      let user;
+      if (userId) {
+        user = await OrganisationUserModel.findOne({ _id: userId }).lean();
+      }
+      trip.shortage = {
+        ...shortage,
+        user,
+      };
+    }
 
     const assignedPersonnelsList = [];
 
@@ -384,6 +396,7 @@ const getTrip = async (req, res) => {
       organisationId
     );
     const { isInvoiced, invoice } = resolvedInvoicedTrip;
+    console.log("isInvoiced", invoice);
 
     return res.status(200).send({
       data: {
@@ -789,6 +802,7 @@ const updateTrip = async (req, res) => {
       amount,
       date,
       assignedPersonnelsId,
+      shortage,
     } = req.body;
     if (!_id) return res.status(400).send({ error: "trip _id is required" });
     if (!organisationId)
@@ -815,9 +829,10 @@ const updateTrip = async (req, res) => {
         "requestIds.requestId": currentTrip?.requestId,
       }).lean();
       if (invoiced) {
-        return res
-          .status(400)
-          .send({ error: "trip has been invoiced, cannot edit amount" });
+        return res.status(400).send({
+          error:
+            "trip has been invoiced, cannot edit amount. If you want to continue with this operation, you can either delete the associated invoice or detach the trip from the invoice.",
+        });
       }
     }
 
@@ -1534,7 +1549,7 @@ const uploadWaybill = async (req, res) => {
     if (!trip) return res.status(400).send({ error: "trip not found" });
     let oldImageName;
     const filename = req.file.filename;
-    console.log("fileName", filename);
+
     const imageUrl = await addImage(req, filename);
     let updateTrip;
     let log;
@@ -1861,7 +1876,7 @@ const tripAction = async (req, res) => {
           "Trip has recorded expenses. You need to first delete or disassociate the expenses from the trip";
         return res.status(400).send({ error: reason });
       }
-      console.log("cancel 5");
+
       const payment = await PaymentModel.findOne({
         "requestIds.requestId": trip.requestId,
         disabled: false,
@@ -1936,6 +1951,114 @@ const tripAction = async (req, res) => {
     return res.status(500).send(error.message);
   }
 };
+const applyShortage = async (req, res) => {
+  try {
+    const {
+      _id,
+      shortageAmount,
+      shortageReason,
+      name,
+      quantity,
+      userId,
+      unit,
+      organisationId,
+    } = req.body;
+    if (!_id) return res.status(400).send({ error: "Trip id is required" });
+    if (!shortageAmount)
+      return res.status(400).send({ error: "Shortage amount is required" });
+    if (!shortageReason)
+      return res.status(400).send({ error: "Shortage reason is required" });
+    if (!name) return res.status(400).send({ error: "Name is required" });
+    if (!quantity)
+      return res.status(400).send({ error: "Quantity is required" });
+    if (!userId) return res.status(400).send({ error: "User id is required" });
+    if (!unit) return res.status(400).send({ error: "Unit is required" });
+    if (!organisationId)
+      return res.status(400).send({ error: "Organisation id is required" });
+    const currentTrip = await TripModel.findById({ _id }).lean();
+    if (!currentTrip) return res.status(400).send({ error: "Trip not found" });
+    const invoiced = await InvoiceModel.findOne({
+      organisationId,
+      disabled: false,
+      "requestIds.requestId": currentTrip?.requestId,
+    }).lean();
+    if (invoiced) {
+      return res.status(400).send({
+        error:
+          "trip has been invoiced, cannot apply shortage. If you want to continue with this operation, you can either delete the associated invoice or detach the trip from the invoice.",
+      });
+    }
+
+    const log = {
+      date: new Date(),
+      userId,
+      action: "shortage",
+      details: `shortage applied`,
+      reason: shortageReason,
+    };
+    const shortage = {
+      name,
+      quantity,
+      shortageAmount,
+      shortageReason,
+      userId,
+      unit,
+    };
+    const updateTrip = await TripModel.findByIdAndUpdate(
+      { _id },
+      {
+        shortage,
+        $push: { logs: log },
+      },
+      { new: true }
+    );
+    if (!updateTrip)
+      return res.status(400).send({ error: "Error in applying shortage" });
+    return res.status(200).send({ data: updateTrip });
+  } catch (error) {
+    return res.status(500).send(error.message);
+  }
+};
+const removeShortage = async (req, res) => {
+  try {
+    const { _id, userId, organisationId } = req.body;
+    if (!_id) return res.status(400).send({ error: "Trip id is required" });
+    if (!userId) return res.status(400).send({ error: "User id is required" });
+
+    const currentTrip = await TripModel.findById({ _id }).lean();
+    if (!currentTrip) return res.status(400).send({ error: "Trip not found" });
+    const invoiced = await InvoiceModel.findOne({
+      organisationId,
+      disabled: false,
+      "requestIds.requestId": currentTrip?.requestId,
+    }).lean();
+    if (invoiced) {
+      return res.status(400).send({
+        error:
+          "trip has been invoiced, shortage cannot be removed. If you want to continue with this operation, you can either delete the associated invoice or detach the trip from the invoice.",
+      });
+    }
+    const log = {
+      date: new Date(),
+      userId,
+      action: "shortage",
+      details: `shortage removed`,
+    };
+    const updateTrip = await TripModel.findByIdAndUpdate(
+      { _id },
+      {
+        shortage: null,
+        $push: { logs: log },
+      },
+      { new: true }
+    );
+    if (!updateTrip)
+      return res.status(400).send({ error: "Error in removing shortage" });
+    return res.status(200).send({ data: updateTrip });
+  } catch (error) {
+    return res.status(500).send(error.message);
+  }
+};
 
 module.exports = {
   createTrip,
@@ -1956,5 +2079,6 @@ module.exports = {
   getTripByRequestId,
   getTripsByVehicleId,
   getTripsByDriverId,
-
+  applyShortage,
+  removeShortage,
 };

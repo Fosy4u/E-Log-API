@@ -3,6 +3,7 @@ const VendorAgentModel = require("../models/vendorAgent");
 const moment = require("moment");
 const CustomerModel = require("../models/customer");
 const TripModel = require("../models/trip");
+const TruckModel = require("../models/truck");
 const mongoose = require("mongoose");
 const ShortUniqueId = require("short-unique-id");
 const {
@@ -185,7 +186,7 @@ const createInvoice = async (req, res) => {
 const getInvoicePaidAndAmountDue = async (request, invoiceId) => {
   const requestId = request?.requestId;
   let paid = 0;
-  let amountDue = request?.amount;
+  let amountDue = request?.amountDue;
   const paidInvoices = await PaymentModel.find({
     invoiceId,
     disabled: false,
@@ -225,6 +226,10 @@ const formatInvoice = async (invoice) => {
       pickupAddress: 1,
       dropOffAddress: 1,
       amount: 1,
+      shortage: 1,
+      pickupDate: 1,
+      vehicleId: 1,
+      dropOffDate: 1,
     }
   ).lean();
 
@@ -240,6 +245,16 @@ const formatInvoice = async (invoice) => {
   const customerData = await CustomerModel.find({
     customerId: { $in: customerIds },
   }).lean();
+  const vehicleIds = tripData.map((trip) => trip?.vehicleId);
+  const vehicleData = await TruckModel.find(
+    {
+      _id: { $in: vehicleIds },
+    },
+    {
+      regNo: 1,
+      imageUrl: 1,
+    }
+  ).lean();
   const collection = [];
 
   const format = requestIds.map(async (request) => {
@@ -254,7 +269,14 @@ const formatInvoice = async (invoice) => {
     const customerDetail = customerData.find(
       (customer) => customer?._id?.toString() === tripDetail?.customerId
     );
-
+    const vehicleDetail = vehicleData.find(
+      (vehicle) => vehicle?._id?.toString() === tripDetail?.vehicleId
+    );
+    request.shortage = tripDetail?.shortage;
+    request.shortageAmount = Number(tripDetail?.shortage?.shortageAmount || 0);
+    request.amountDue = request.amount;
+    request.amount = request.amount + request.shortageAmount;
+    request.vehicle = vehicleDetail;
     const calc = await Promise.resolve(
       getInvoicePaidAndAmountDue(request, invoice?.invoiceId)
     );
@@ -303,8 +325,15 @@ const formatInvoice = async (invoice) => {
     status = "Partially Paid";
   }
   const isVendorRequested = collection[0]?.vendor?._id ? true : false;
+  const totalShortageAmount = collection.reduce((acc, trip) => {
+    return acc + Number(trip?.trip?.shortage?.shortageAmount || 0);
+  }, 0);
+  const allShortages = collection.reduce((acc, trip) => {
+    return acc.concat(trip?.trip?.shortage || []);
+  }, []);
   return {
     ...invoice,
+
     amountDue: totalAmountDue,
     paid: totalPaid,
     vendor: collection[0]?.vendor,
@@ -318,6 +347,10 @@ const formatInvoice = async (invoice) => {
     requester: collection[0]?.vendor?._id
       ? getName(collection[0]?.vendor)
       : getName(collection[0]?.customer),
+    totalShortageAmount,
+    allShortages,
+    
+    amount: invoice?.amount + totalShortageAmount,
   };
   // return {
   //   ...invoice,
@@ -748,7 +781,7 @@ const getInvoiceLogs = async (req, res) => {
 const addInvoiceRemark = async (req, res) => {
   try {
     const { _id, remarkObj } = req.body;
-    console.log("here", _id, remarkObj);
+   
 
     const { remark, userId } = remarkObj;
 
@@ -771,7 +804,7 @@ const addInvoiceRemark = async (req, res) => {
       },
       { new: true }
     );
-    console.log("here", updateRemark);
+
     const log = {
       date: new Date(),
       userId,
@@ -899,7 +932,7 @@ const getInvoiceRemarks = async (req, res) => {
   try {
     const { _id } = req.query;
     if (!_id) return res.status(400).send({ error: "invoice _id is required" });
-    console.log("here", _id);
+
     const invoices = await InvoiceModel.aggregate([
       {
         $match: {
@@ -978,7 +1011,7 @@ const getInvoiceRemarks = async (req, res) => {
 };
 const markInvoiceAsSent = async (req, res) => {
   try {
-    console.log(req.body);
+   
     const { _id, userId } = req.body;
     if (!_id) return res.status(400).send({ error: "invoice _id is required" });
     if (!userId) return res.status(400).send({ error: "userId is required" });
@@ -1008,7 +1041,7 @@ const markInvoiceAsSent = async (req, res) => {
 };
 
 const generateUniqueShareCode = async (organisationId) => {
-  console.log("here 2", organisationId);
+
   let code;
   let found = true;
   const options = {

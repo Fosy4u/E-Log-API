@@ -153,12 +153,12 @@ let routes = (app) => {
   );
   router.put(
     "/user/delete",
-    
+
     organisationUsersResolver.deleteOrganisationUser
   );
   router.put(
     "/user/restore",
-    
+
     organisationUsersResolver.restoreOrganisationUser
   );
   router.put(
@@ -404,7 +404,7 @@ let routes = (app) => {
     tripResolver.createTrip
   );
   router.get("/trips", authMiddleware, tripResolver.getTrips);
-  router.get("/trips/params", authMiddleware, tripResolver.getTripsByParams,);
+  router.get("/trips/params", authMiddleware, tripResolver.getTripsByParams);
   router.get(
     "/trips/vehicleId",
     authMiddleware,
@@ -429,6 +429,16 @@ let routes = (app) => {
   router.get("/trip/remarks", authMiddleware, tripResolver.getTripRemarks);
   router.get("/trip/logs", authMiddleware, tripResolver.getTripLogs);
   router.put("/trip/edit", authMiddleware, tripResolver.updateTrip);
+  router.put(
+    "/trip/shortage/apply",
+    authMiddleware,
+    tripResolver.applyShortage
+  );
+  router.put(
+    "/trip/shortage/remove",
+    authMiddleware,
+    tripResolver.removeShortage
+  );
   router.put("/trip/delete", authMiddleware, tripResolver.deleteTrips);
   router.put("/trip/restore", authMiddleware, tripResolver.restoreTrips);
   router.put("/trip/addRemark", authMiddleware, tripResolver.addTripRemark);

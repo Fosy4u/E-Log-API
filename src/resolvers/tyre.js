@@ -463,7 +463,7 @@ const getTyreInspectionsByParams = async (req, res) => {
     );
 
     return res.status(200).send({
-      message: "Tyres fetched successfully",
+      message: "Tyres' Inspections fetched successfully",
       data: tyreInspectionsWithVehicle.sort(function (a, b) {
         return new Date(b?.date) - new Date(a?.date);
       }),
