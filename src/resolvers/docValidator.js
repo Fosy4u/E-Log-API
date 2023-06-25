@@ -2,6 +2,7 @@ const InvoiceModel = require("../models/invoice");
 const VendorAgentModel = require("../models/vendorAgent");
 const CustomerModel = require("../models/customer");
 const TripModel = require("../models/trip");
+const TruckModel = require("../models/truck");
 const mongoose = require("mongoose");
 const PaymentModel = require("../models/payment");
 const OrganisationProfileModel = require("../models/organisationProfile");
@@ -79,7 +80,7 @@ const getName = (contact) => {
 const getInvoicePaidAndAmountDue = async (request, invoiceId) => {
   const requestId = request?.requestId;
   let paid = 0;
-  let amountDue = request?.amount;
+  let amountDue = request?.amountDue;
   const paidInvoices = await PaymentModel.find({
     invoiceId,
     disabled: false,
@@ -101,6 +102,7 @@ const getInvoicePaidAndAmountDue = async (request, invoiceId) => {
   return { paid, amountDue };
 };
 
+
 const formatInvoice = async (invoice) => {
   const { requestIds } = invoice;
   const requestIdsMap = requestIds.map((request) => request.requestId);
@@ -119,6 +121,10 @@ const formatInvoice = async (invoice) => {
       pickupAddress: 1,
       dropOffAddress: 1,
       amount: 1,
+      shortage: 1,
+      pickupDate: 1,
+      vehicleId: 1,
+      dropOffDate: 1,
     }
   ).lean();
 
@@ -134,6 +140,16 @@ const formatInvoice = async (invoice) => {
   const customerData = await CustomerModel.find({
     customerId: { $in: customerIds },
   }).lean();
+  const vehicleIds = tripData.map((trip) => trip?.vehicleId);
+  const vehicleData = await TruckModel.find(
+    {
+      _id: { $in: vehicleIds },
+    },
+    {
+      regNo: 1,
+      imageUrl: 1,
+    }
+  ).lean();
   const collection = [];
 
   const format = requestIds.map(async (request) => {
@@ -148,21 +164,18 @@ const formatInvoice = async (invoice) => {
     const customerDetail = customerData.find(
       (customer) => customer?._id?.toString() === tripDetail?.customerId
     );
-
+    const vehicleDetail = vehicleData.find(
+      (vehicle) => vehicle?._id?.toString() === tripDetail?.vehicleId
+    );
+    request.shortage = tripDetail?.shortage;
+    request.shortageAmount = Number(tripDetail?.shortage?.shortageAmount || 0);
+    request.amountDue = request.amount;
+    request.amount = request.amount + request.shortageAmount;
+    request.vehicle = vehicleDetail;
     const calc = await Promise.resolve(
       getInvoicePaidAndAmountDue(request, invoice?.invoiceId)
     );
     const { amountDue, paid } = calc;
-    let status = "Draft";
-    if (invoice?.sentToCustomer) {
-      status = "Sent";
-    }
-    if (paid > 0 && amountDue === 0) {
-      status = "Paid";
-    }
-    if (paid > 0 && amountDue > 0) {
-      status = "Partially Paid";
-    }
 
     const invObj = {
       vendor: {
@@ -174,7 +187,7 @@ const formatInvoice = async (invoice) => {
         name: getName(customerDetail),
         ...customerDetail,
       },
-      status,
+
       trip: {
         ...tripDetail,
         amountDue,
@@ -196,15 +209,32 @@ const formatInvoice = async (invoice) => {
   const totalPaid = collection.reduce((acc, trip) => {
     return acc + trip.trip.paid;
   }, 0);
+  let status = "Draft";
+  if (invoice?.sentToCustomer) {
+    status = "Sent";
+  }
+  if (totalPaid > 0 && totalAmountDue === 0) {
+    status = "Paid";
+  }
+  if (totalPaid > 0 && totalAmountDue > 0) {
+    status = "Partially Paid";
+  }
   const isVendorRequested = collection[0]?.vendor?._id ? true : false;
+  const totalShortageAmount = collection.reduce((acc, trip) => {
+    return acc + Number(trip?.trip?.shortage?.shortageAmount || 0);
+  }, 0);
+  const allShortages = collection.reduce((acc, trip) => {
+    return acc.concat(trip?.trip?.shortage || []);
+  }, []);
   return {
     ...invoice,
+
     amountDue: totalAmountDue,
     paid: totalPaid,
     vendor: collection[0]?.vendor,
     tripsDetails: collection,
     isVendorRequested,
-    status: collection[0]?.status,
+    status,
     sentTo: collection[0]?.vendor?._id
       ? collection[0]?.vendor
       : collection[0]?.customer,
@@ -212,6 +242,10 @@ const formatInvoice = async (invoice) => {
     requester: collection[0]?.vendor?._id
       ? getName(collection[0]?.vendor)
       : getName(collection[0]?.customer),
+    totalShortageAmount,
+    allShortages,
+
+    amount: invoice?.amount + totalShortageAmount,
   };
   // return {
   //   ...invoice,
@@ -219,8 +253,8 @@ const formatInvoice = async (invoice) => {
   //   vendor: format[0]?.vendor,
   // };
 };
-
 const getDoc = async (req, res) => {
+  console.log("getDoc called");
   try {
     const { code, docId } = req.query;
     console.log("code is", code);
@@ -266,6 +300,7 @@ const getDoc = async (req, res) => {
       }
 
       const formattedInvoice = await formatInvoice(invoice);
+      console.log("formattedInvoice is", formattedInvoice);
       type = "invoice";
       data = formattedInvoice;
       organisationId = invoice?.organisationId;
@@ -342,6 +377,7 @@ const getDownloadDoc = async (req, res) => {
     }).lean();
     if (invoice) {
       const formattedInvoice = await formatInvoice(invoice);
+      console.log("formattedInvoice is", formattedInvoice);
       type = "invoice";
       data = formattedInvoice;
       organisationId = invoice?.organisationId;
