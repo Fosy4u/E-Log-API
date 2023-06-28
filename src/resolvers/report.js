@@ -9,6 +9,7 @@ const DriverModel = require("../models/driver");
 const TyreModel = require("../models/tyre");
 const OrganisationUserModel = require("../models/organisationUsers");
 const moment = require("moment");
+const { onlyUnique } = require("../helpers/utils");
 
 const getLastUpdated = async (req, res) => {
   try {
@@ -292,14 +293,15 @@ const getAllProfitAndLoss = async (req, res) => {
         waybillNumber: 1,
         pickupDate: 1,
         shortage: 1,
+        dropOffDate: 1,
       }
     ).lean();
 
     const shortages = shortagedTrips.map((trip) => {
-      const { shortage, pickupDate, requestId, waybillNumber, _id } = trip;
+      const { shortage, dropOffDate, requestId, waybillNumber, _id } = trip;
       return {
         debit: Number(shortage.shortageAmount),
-        date: moment(pickupDate).format("YYYY-MM-DD"),
+        date: moment(dropOffDate).format("YYYY-MM-DD"),
         _id,
         requestId,
         waybillNumber,
@@ -347,19 +349,23 @@ const getAllProfitAndLoss = async (req, res) => {
       }
       return acc;
     }, 0);
+
     const totalExpenses = sortedValuesWithBalance.reduce((acc, value) => {
       if (value.debit && value.expenseType !== "Trip Shortage") {
         return acc + value.debit;
       }
       return acc;
     }, 0);
+
     const totalShortages = sortedValuesWithBalance.reduce((acc, value) => {
       if (value.debit && value.expenseType === "Trip Shortage") {
         return acc + value.debit;
       }
       return acc;
     }, 0);
+
     const totalProfit = totalRevenue - totalExpenses - totalShortages;
+
     const param = {
       totalRevenue,
       totalExpenses,
@@ -654,6 +660,45 @@ const resolveProfitAndLossByVehicle = (vehicles, trips, expenses) => {
   }
   return profitAndLossByVehicle;
 };
+const resolveProfitAndLossByDriver = (drivers, trips, expenses) => {
+  const profitAndLossByDriver = [];
+  for (const driver of drivers) {
+    const { _id, idNumber } = driver;
+
+    const driverTrips = trips.filter(
+      (trip) => trip.driverId === _id?.toString()
+    );
+
+    const driverTripIds = driverTrips
+      .map((trip) => trip.requestId)
+      .filter(onlyUnique);
+
+    const driverExpenses = expenses.filter(
+      (expense) => driverTripIds.includes(expense.tripId) === true
+    );
+
+    const totalDriverRevenue = driverTrips.reduce((acc, trip) => {
+      return acc + trip.amount;
+    }, 0);
+    const totalDriverShortage = driverTrips.reduce((acc, trip) => {
+      return acc + Number(trip?.shortage?.shortageAmount) || 0;
+    }, 0);
+    const totalDriverExpense = driverExpenses.reduce((acc, expense) => {
+      return acc + expense.amount;
+    }, 0);
+    const totalProfit =
+      totalDriverRevenue - totalDriverExpense - totalDriverShortage;
+    profitAndLossByDriver.push({
+      _id,
+      idNumber,
+      totalDriverRevenue,
+      totalDriverExpense,
+      totalDriverShortage,
+      totalProfit,
+    });
+  }
+  return profitAndLossByDriver;
+};
 const getProfitAndLossByVehicle = async (req, res) => {
   try {
     const { organisationId, fromDate, toDate } = req.query;
@@ -857,8 +902,9 @@ const getAnalyticsByVehicleID = async (req, res) => {
         },
       },
     ]);
+    const trips = [];
 
-    const trips = await TripModel.find(
+    const advancedTrips = await TripModel.find(
       {
         organisationId,
         status: { $nin: excludeStatusAdvancePayments },
@@ -889,12 +935,67 @@ const getAnalyticsByVehicleID = async (req, res) => {
         shortage: 1,
       }
     ).lean();
-    const shortagedTrips = trips.filter((trip) => trip.shortage);
+    const balanceTrips = await TripModel.find(
+      {
+        organisationId,
+        disabled: false,
+        status: "Delivered",
+        dropOffDate: {
+          $gte: from,
+          $lte: to,
+        },
+        vehicleId: _id,
+        disabled: false,
+      },
+      {
+        amount: 1,
+        requestId: 1,
+        waybillNumber: 1,
+        vendorId: 1,
+        customerId: 1,
+        pickupDate: 1,
+        vehicleId: 1,
+        userId: 1,
+        status: 1,
+        estimatedFuelLitres: 1,
+        estimatedFuelCost: 1,
+        actualFuelLitres: 1,
+        actualFuelCost: 1,
+        estimatedDropOffDate: 1,
+        dropOffDate: 1,
+        shortage: 1,
+      }
+    ).lean();
+
+    advancedTrips.forEach((trip) => {
+      trips.push({
+        ...trip,
+        tripType: "Advanced",
+        advanceRevenue: true,
+        balanceRevenue: false,
+        amount: trip.amount / 2,
+        credit: trip.amount / 2,
+        revenueType: "Trip Advance Revenue",
+      });
+    });
+    balanceTrips.forEach((trip) => {
+      trips.push({
+        ...trip,
+        tripType: "Balance",
+        advanceRevenue: false,
+        balanceRevenue: true,
+        amount: trip.amount / 2,
+        credit: trip.amount / 2,
+        revenueType: "Trip Balance Revenue",
+      });
+    });
+
+    const shortagedTrips = advancedTrips.filter((trip) => trip.shortage);
     const shortages = shortagedTrips.map((trip) => {
-      const { shortage, pickupDate, requestId, waybillNumber, _id } = trip;
+      const { shortage, requestId, waybillNumber, _id, dropOffDate } = trip;
       return {
         debit: Number(shortage.shortageAmount),
-        date: moment(pickupDate).format("YYYY-MM-DD"),
+        date: moment(dropOffDate).format("YYYY-MM-DD"),
         _id,
         requestId,
         waybillNumber,
@@ -926,6 +1027,7 @@ const getAnalyticsByVehicleID = async (req, res) => {
     ).lean();
 
     const vehicles = [vehicle];
+
     const getResolvedProfitAndLoss = resolveProfitAndLossByVehicle(
       vehicles,
       trips,
@@ -1073,7 +1175,9 @@ const getAnalyticsByDriverID = async (req, res) => {
       return res.status(400).send({ error: "driver not found" });
     }
 
-    const trips = await TripModel.find(
+    const trips = [];
+
+    const advancedTrips = await TripModel.find(
       {
         organisationId,
         status: { $nin: excludeStatusAdvancePayments },
@@ -1102,15 +1206,72 @@ const getAnalyticsByDriverID = async (req, res) => {
         estimatedDropOffDate: 1,
         dropOffDate: 1,
         shortage: 1,
+        driverId: 1,
       }
     ).lean();
 
-    const shortagedTrips = trips.filter((trip) => trip.shortage);
+    const balanceTrips = await TripModel.find(
+      {
+        organisationId,
+        disabled: false,
+        status: "Delivered",
+        dropOffDate: {
+          $gte: from,
+          $lte: to,
+        },
+        driverId: _id,
+        disabled: false,
+      },
+      {
+        amount: 1,
+        requestId: 1,
+        waybillNumber: 1,
+        vendorId: 1,
+        customerId: 1,
+        pickupDate: 1,
+        vehicleId: 1,
+        userId: 1,
+        status: 1,
+        estimatedFuelLitres: 1,
+        estimatedFuelCost: 1,
+        actualFuelLitres: 1,
+        actualFuelCost: 1,
+        estimatedDropOffDate: 1,
+        dropOffDate: 1,
+        shortage: 1,
+        driverId: 1,
+      }
+    ).lean();
+
+    advancedTrips.forEach((trip) => {
+      trips.push({
+        ...trip,
+        tripType: "Advanced",
+        advanceRevenue: true,
+        balanceRevenue: false,
+        amount: trip.amount / 2,
+        credit: trip.amount / 2,
+        revenueType: "Trip Advance Revenue",
+      });
+    });
+    balanceTrips.forEach((trip) => {
+      trips.push({
+        ...trip,
+        tripType: "Balance",
+        advanceRevenue: false,
+        balanceRevenue: true,
+        amount: trip.amount / 2,
+        credit: trip.amount / 2,
+        revenueType: "Trip Balance Revenue",
+      });
+    });
+
+    const shortagedTrips = balanceTrips.filter((trip) => trip.shortage);
     const shortages = shortagedTrips.map((trip) => {
-      const { shortage, pickupDate, requestId, waybillNumber, _id } = trip;
+      const { shortage, dropOffDate, requestId, waybillNumber, _id } = trip;
       return {
         debit: Number(shortage.shortageAmount),
-        date: moment(pickupDate).format("YYYY-MM-DD"),
+        date: moment(dropOffDate).format("YYYY-MM-DD"),
         _id,
         requestId,
         waybillNumber,
@@ -1118,7 +1279,7 @@ const getAnalyticsByDriverID = async (req, res) => {
         ...shortage,
       };
     });
-    const tripIds = trips.map((item) => item.requestId);
+    const tripIds = trips.map((item) => item.requestId).filter(onlyUnique);
 
     to.setUTCHours(23, 59, 59, 999);
     const expenses = await ExpensesModel.find(
@@ -1142,26 +1303,30 @@ const getAnalyticsByDriverID = async (req, res) => {
       }
     ).lean();
 
-    const getResolvedProfitAndLoss = await Promise.resolve(
-      resolveTripProfitAndLoss(trips, expenses)
+    const drivers = [driver];
+
+    const getResolvedProfitAndLoss = resolveProfitAndLossByDriver(
+      drivers,
+      trips,
+      expenses
     );
 
     const totalRevenue = getResolvedProfitAndLoss.reduce((acc, value) => {
-      if (value.totalRevenue) {
-        return acc + value.totalRevenue;
+      if (value.totalDriverRevenue) {
+        return acc + value.totalDriverRevenue;
       }
       return acc;
     }, 0);
     const totalExpenses = getResolvedProfitAndLoss.reduce((acc, value) => {
-      if (value.totalExpense) {
-        return acc + value.totalExpense;
+      if (value.totalDriverExpense) {
+        return acc + value.totalDriverExpense;
       }
       return acc;
     }, 0);
 
     const totalShortages = getResolvedProfitAndLoss.reduce((acc, value) => {
-      if (value.shortageAmount) {
-        return acc + Number(value.shortageAmount);
+      if (value.totalDriverShortage) {
+        return acc + Number(value.totalDriverShortage);
       }
       return acc;
     }, 0);
@@ -1314,7 +1479,11 @@ const getAnalyticsByTripID = async (req, res) => {
     }
     const shortageAmount = trip?.shortage?.shortageAmount || 0;
 
-    const totalRevenue = trip.amount || 0;
+    let totalRevenue = trip.amount || 0;
+    if (trip.status === "Cancelled") {
+      totalRevenue = 0;
+    }
+
     const totalExpenses = expenses.reduce((acc, value) => {
       if (value.amount) {
         return acc + value.amount;
@@ -1348,7 +1517,24 @@ const getAnalyticsByTripID = async (req, res) => {
         percentage: (shortage.shortageAmount / totalExpenses) * 100,
       });
     }
-    const combined = [trip, ...expenses, { ...shortage }];
+    const advanceTrip = {
+      ...trip,
+      date: trip.pickupDate,
+      amount: trip.amount / 2,
+      credit: trip.amount / 2,
+      revenueType: "Trip Advance Revenue",
+    };
+    let balanceTrip;
+    if (trip.status === "Delivered") {
+      balanceTrip = {
+        ...trip,
+        date: trip.dropOffDate,
+        amount: trip.amount / 2,
+        credit: trip.amount / 2,
+        revenueType: "Trip Balance Revenue",
+      };
+    }
+    const combined = [advanceTrip, balanceTrip, ...expenses, { ...shortage }];
     await Promise.all(
       combined.map(async (item) => {
         if (item.userId) {
@@ -1376,11 +1562,12 @@ const getAnalyticsByTripID = async (req, res) => {
         expensesId,
         requestId,
         shortageAmount,
+        status,
       } = value;
       if (requestId) {
         acc.push({
-          date: pickupDate,
-          credit: amount,
+          date: date,
+          credit: status === "Cancelled" ? 0 : amount,
           ...value,
         });
       }
@@ -1429,7 +1616,7 @@ const getAnalyticsByTripID = async (req, res) => {
       totalExpenses,
       totalShortage: shortage?.amount,
       netProfit,
-      data: data.sort((a, b) => a.date - b.date),
+      data: data.sort((a, b) => b.date - a.date),
       expensesByType,
       fuel,
     };
