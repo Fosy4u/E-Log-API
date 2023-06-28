@@ -254,11 +254,10 @@ const formatInvoice = async (invoice) => {
   // };
 };
 const getDoc = async (req, res) => {
-  console.log("getDoc called");
+
   try {
     const { code, docId } = req.query;
-    console.log("code is", code);
-    console.log("docId is", docId);
+   
     if (!code) return res.status(400).send({ error: "code is required" });
     if (!docId) {
       return res.status(400).send({
@@ -300,7 +299,7 @@ const getDoc = async (req, res) => {
       }
 
       const formattedInvoice = await formatInvoice(invoice);
-      console.log("formattedInvoice is", formattedInvoice);
+    
       type = "invoice";
       data = formattedInvoice;
       organisationId = invoice?.organisationId;
@@ -338,7 +337,7 @@ const getDoc = async (req, res) => {
       }
     }
     if (!invoice && !payment) {
-      console.log("no invoice or payment");
+     
       return res.status(400).send({
         error:
           "The code you entered is invalid. Please try again or request a code from your issuer.",
@@ -358,7 +357,7 @@ const getDoc = async (req, res) => {
 const getDownloadDoc = async (req, res) => {
   try {
     const { docId } = req.query;
-    console.log("docId is", docId);
+
 
     if (!docId) {
       return res.status(400).send({
@@ -377,7 +376,7 @@ const getDownloadDoc = async (req, res) => {
     }).lean();
     if (invoice) {
       const formattedInvoice = await formatInvoice(invoice);
-      console.log("formattedInvoice is", formattedInvoice);
+
       type = "invoice";
       data = formattedInvoice;
       organisationId = invoice?.organisationId;
@@ -397,7 +396,7 @@ const getDownloadDoc = async (req, res) => {
       }
     }
     if (!invoice && !payment) {
-      console.log("no invoice or payment");
+ 
       return res.status(400).send({
         error:
           "error getting document. Please ensure url is correct. If you are still having issues, please contact your issuer.",
