@@ -1075,9 +1075,10 @@ const getAnalyticsByVehicleID = async (req, res) => {
     }, vehicleExpensesByType);
     vehicleExpensesByType.push;
     const combined = [...trips, ...expenses, ...shortages];
+
     await Promise.all(
       combined.map(async (item) => {
-        if (item.userId) {
+        if (item?.userId) {
           const user = await OrganisationUserModel.findOne(
             {
               _id: item.userId,
@@ -1491,6 +1492,7 @@ const getAnalyticsByTripID = async (req, res) => {
       return acc;
     }, 0);
     const netProfit = totalRevenue - totalExpenses - shortageAmount;
+
     //rank expenses by expense type in percentage
     const expensesByType = expenses.reduce((acc, value) => {
       if (value.expenseType) {
@@ -1517,6 +1519,7 @@ const getAnalyticsByTripID = async (req, res) => {
         percentage: (shortage.shortageAmount / totalExpenses) * 100,
       });
     }
+
     const advanceTrip = {
       ...trip,
       date: trip.pickupDate,
@@ -1534,13 +1537,17 @@ const getAnalyticsByTripID = async (req, res) => {
         revenueType: "Trip Balance Revenue",
       };
     }
-    const combined = [advanceTrip, balanceTrip, ...expenses, { ...shortage }];
+
+    const combined = [advanceTrip, ...expenses, { ...shortage }];
+    if (balanceTrip) {
+      combined.push(balanceTrip);
+    }
     await Promise.all(
       combined.map(async (item) => {
-        if (item.userId) {
+        if (item?.userId) {
           const user = await OrganisationUserModel.findOne(
             {
-              _id: item.userId,
+              _id: item?.userId,
             },
             {
               firstName: 1,
@@ -1554,16 +1561,11 @@ const getAnalyticsByTripID = async (req, res) => {
         }
       })
     );
+
+
     const data = combined.reduce((acc, value) => {
-      const {
-        pickupDate,
-        date,
-        amount,
-        expensesId,
-        requestId,
-        shortageAmount,
-        status,
-      } = value;
+      const { date, amount, expensesId, requestId, shortageAmount, status } =
+        value;
       if (requestId) {
         acc.push({
           date: date,
@@ -1587,6 +1589,8 @@ const getAnalyticsByTripID = async (req, res) => {
       }
       return acc;
     }, []);
+
+
     const fuel = {};
     if (trip.estimatedFuelLitres) {
       fuel.estimatedFuelLitres = trip.estimatedFuelLitres;
