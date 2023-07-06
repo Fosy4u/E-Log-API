@@ -330,6 +330,9 @@ const resolveInvoiceStatus = async (trip, organisationId) => {
     if (invoiced?.sentToCustomer) {
       status = "Sent";
     }
+    if (invoiced?.sentToCustomer && invoiced?.dueDate < new Date()) {
+      status = "Overdue";
+    }
     if (paid > 0 && amountDue === 0) {
       status = "Paid";
     }
@@ -340,6 +343,7 @@ const resolveInvoiceStatus = async (trip, organisationId) => {
     invoice.status = status;
     invoice.amountDue = amountDue;
     invoice.paid = paid;
+    invoice.dueDate = invoiced?.dueDate;
   }
   return { isInvoiced, invoice };
 };

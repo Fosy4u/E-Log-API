@@ -57,7 +57,7 @@ const uploadMultiple = multer({
       return cb(new Error("Only .png, .jpg and .jpeg format allowed!"));
     }
   },
-});
+})
 
 // saving the image on uploads folder to fasten loaden of images
 

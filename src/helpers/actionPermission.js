@@ -1,5 +1,6 @@
 const OrganisationPartnerModel = require("../models/organisationPartner");
 const CustomerModel = require("../models/customer");
+const IssueModel = require("../models/issue");
 const TripModel = require("../models/trip");
 const VendorAgentModel = require("../models/vendorAgent");
 const OrganisationUserModel = require("../models/organisationUsers");
@@ -102,7 +103,7 @@ const canDeleteOrEditOrganisationTyreRemark = async (param) => {
     const remark = tyre.remarks.find(
       (remark) => remark._id.toString() === remarkId
     );
-    console.log(remark);
+ 
     if (remark) {
       canPerformAction = remark.userId.toString() === userId;
     }
@@ -147,7 +148,7 @@ const canDeleteOrEditOrganisationExpensesRemark = async (param) => {
     const remark = expenses.remarks.find(
       (remark) => remark._id.toString() === remarkId
     );
-    console.log(remark);
+  
     if (remark) {
       canPerformAction = remark.userId.toString() === userId;
     }
@@ -194,7 +195,7 @@ const canDeleteOrEditOrganisationPaymentRemark = async (param) => {
     const remark = payment.remarks.find(
       (remark) => remark._id.toString() === remarkId
     );
-    console.log(remark);
+
     if (remark) {
       canPerformAction = remark.userId.toString() === userId;
     }
@@ -294,7 +295,6 @@ const canEditOrganisationInvoice = async (param) => {
   return canPerformAction;
 };
 
-
 const canDeleteOrEditOrganisationToolRemark = async (param) => {
   const { toolId, remarkId, userId } = param;
   let canPerformAction = false;
@@ -306,13 +306,14 @@ const canDeleteOrEditOrganisationToolRemark = async (param) => {
     const remark = tool.remarks.find(
       (remark) => remark._id.toString() === remarkId
     );
-    console.log(remark);
+  
     if (remark) {
       canPerformAction = remark.userId.toString() === userId;
     }
   }
   return canPerformAction;
 };
+
 const canEditOrganisationTool = async (param) => {
   const { toolId, userId } = param;
   let canPerformAction = false;
@@ -339,6 +340,52 @@ const canCreateOrganisationTool = async (param) => {
   }
   return canPerformAction;
 };
+const canEditOrganisationIssues = async (param) => {
+  const { issueId, userId } = param;
+  let canPerformAction = false;
+  const issue = await IssueModel.findOne({
+    _id: issueId,
+  });
+  const organisationId = issue?.organisationId;
+  const user = await OrganisationUserModel.findOne({
+    _id: userId,
+    organisationId,
+  });
+  if (user) {
+    canPerformAction = true;
+  }
+  return canPerformAction;
+};
+
+const canCreateOrganisationIssues = async (param) => {
+  const { organisationId, userId } = param;
+
+  let canPerformAction = false;
+  const user = await OrganisationUserModel.findOne({ _id: userId });
+  if (user?.organisationId.toString() === organisationId) {
+    canPerformAction = true;
+  }
+  return canPerformAction;
+};
+
+const canDeleteOrEditOrganisationIssuesRemark = async (param) => {
+  const { issueId, remarkId, userId } = param;
+  let canPerformAction = false;
+  const issue = await IssueModel.findOne({
+    _id: issueId,
+  });
+
+  if (issue?.remarks?.length > 0) {
+    const remark = issue.remarks.find(
+      (remark) => remark._id.toString() === remarkId
+    );
+  
+    if (remark) {
+      canPerformAction = remark.userId.toString() === userId;
+    }
+  }
+  return canPerformAction;
+};
 
 module.exports = {
   canDeleteOrEditOrganisationPartnerRemark,
@@ -362,5 +409,7 @@ module.exports = {
   canDeleteOrEditOrganisationToolRemark,
   canEditOrganisationTool,
   canCreateOrganisationTool,
-
+  canCreateOrganisationIssues,
+  canEditOrganisationIssues,
+  canDeleteOrEditOrganisationIssuesRemark,
 };

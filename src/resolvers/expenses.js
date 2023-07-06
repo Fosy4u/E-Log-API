@@ -351,7 +351,7 @@ const updateExpenses = async (req, res) => {
       return res
         .status(400)
         .json({ error: "Please provide logged in user id" });
-    const oldData = ExpensesModel.findById(_id, { lean: true });
+    const oldData = await ExpensesModel.findById(_id, { lean: true });
     const newData = req.body;
     const difference = [];
 
