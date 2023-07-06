@@ -8,7 +8,6 @@ const Tool = new mongoose.Schema({
   disabled: { type: Boolean, default: false },
   description: { type: String, required: false },
   name: { type: String, required: true },
-
   purchaseDate: { type: String, required: false },
   puchaseExpensesId: { type: String, required: false },
   linkedOtherExpensesId: { type: [String], required: false, default: [] },
