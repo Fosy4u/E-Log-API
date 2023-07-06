@@ -318,6 +318,9 @@ const formatInvoice = async (invoice) => {
   if (invoice?.sentToCustomer) {
     status = "Sent";
   }
+  if (invoice?.sentToCustomer && invoice?.dueDate < new Date()) {
+    status = `Overdue by ${moment(invoice?.dueDate).fromNow()}`;
+  }
   if (totalPaid > 0 && totalAmountDue === 0) {
     status = "Paid";
   }
@@ -349,7 +352,7 @@ const formatInvoice = async (invoice) => {
       : getName(collection[0]?.customer),
     totalShortageAmount,
     allShortages,
-    
+
     amount: invoice?.amount + totalShortageAmount,
   };
   // return {
@@ -781,7 +784,6 @@ const getInvoiceLogs = async (req, res) => {
 const addInvoiceRemark = async (req, res) => {
   try {
     const { _id, remarkObj } = req.body;
-   
 
     const { remark, userId } = remarkObj;
 
@@ -1011,7 +1013,6 @@ const getInvoiceRemarks = async (req, res) => {
 };
 const markInvoiceAsSent = async (req, res) => {
   try {
-   
     const { _id, userId } = req.body;
     if (!_id) return res.status(400).send({ error: "invoice _id is required" });
     if (!userId) return res.status(400).send({ error: "userId is required" });
@@ -1041,7 +1042,6 @@ const markInvoiceAsSent = async (req, res) => {
 };
 
 const generateUniqueShareCode = async (organisationId) => {
-
   let code;
   let found = true;
   const options = {

@@ -6,6 +6,7 @@ const TruckModel = require("../models/truck");
 const mongoose = require("mongoose");
 const PaymentModel = require("../models/payment");
 const OrganisationProfileModel = require("../models/organisationProfile");
+const moment = require("moment");
 
 const attachProperties = async (payments) => {
   const vendorIds = payments.map((payment) => {
@@ -212,6 +213,9 @@ const formatInvoice = async (invoice) => {
   let status = "Draft";
   if (invoice?.sentToCustomer) {
     status = "Sent";
+  }
+  if (invoice?.sentToCustomer && invoice?.dueDate < new Date()) {
+    status = `Overdue by ${moment(invoice?.dueDate).fromNow()}`;
   }
   if (totalPaid > 0 && totalAmountDue === 0) {
     status = "Paid";
