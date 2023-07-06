@@ -14,6 +14,7 @@ const customerResolver = require("../resolvers/customer");
 const tripResolver = require("../resolvers/trip");
 const vendorAgentResolver = require("../resolvers/vendorAgent");
 const expensesResolver = require("../resolvers/expenses");
+const issueResolver = require("../resolvers/issue");
 const templateResolver = require("../resolvers/template");
 const paymentResolver = require("../resolvers/payment");
 const invoiceResolver = require("../resolvers/invoice");
@@ -457,9 +458,55 @@ let routes = (app) => {
   );
   router.put("/trip/editRemark", authMiddleware, tripResolver.editTripRemark);
 
-  //Expenses
+ 
+  //Issues
 
   router.post(
+    "/issue/create",
+    authMiddleware,
+    handleMoreFieldsUploads,
+    issueResolver.createIssue
+  );
+  router.get("/issues", authMiddleware, issueResolver.getIssues);
+  router.get("/issue", authMiddleware, issueResolver.getIssue);
+  router.get("/issue/remarks", authMiddleware, issueResolver.getIssueRemarks);
+  router.get("/issue/logs", authMiddleware, issueResolver.getIssueLogs);
+  router.put(
+    "/issue/edit",
+    authMiddleware,
+    handleMoreFieldsUploads,
+    issueResolver.updateIssue
+  );
+  router.put("/issue/delete", authMiddleware, issueResolver.deleteIssues);
+  router.put("/issue/restore", authMiddleware, issueResolver.restoreIssues);
+
+  router.put("/issue/addRemark", authMiddleware, issueResolver.addIssueRemark);
+  router.put(
+    "/issue/deleteRemark",
+    authMiddleware,
+    issueResolver.deleteIssueRemark
+  );
+  router.put(
+    "/issue/editRemark",
+    authMiddleware,
+    issueResolver.editIssueRemark
+  );
+  router.put(
+    "/issue/uploads",
+    authMiddleware,
+    handleMoreFieldsUploads,
+    issueResolver.uploadImages
+  );
+  router.put(
+    "/issue/deleteUploads",
+    authMiddleware,
+    issueResolver.deleteIssueImage
+  );
+
+
+   //Expenses
+
+   router.post(
     "/expenses/create",
     authMiddleware,
     handleMoreFieldsUploads,
@@ -515,6 +562,7 @@ let routes = (app) => {
     authMiddleware,
     expensesResolver.deleteExpensesImage
   );
+
   //Payment
 
   router.post(
