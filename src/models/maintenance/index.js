@@ -3,12 +3,12 @@ const mongoose = require("mongoose");
 const timestamp = require("mongoose-timestamp");
 
 
-const Issue = new mongoose.Schema({
+const Maintainance = new mongoose.Schema({
   organisationId: { type: String, required: true },
   disabled: { type: Boolean, default: false },
   description: { type: String, required: false },
   assetId: { type: String, required: true },
-  issueId: { type: String, required: true },
+  issueId: { type: [String], required: false },
   priority: { type: String, required: false },
   reportedDate: { type: String, required: true },
   dueDate: { type: String, required: false },
@@ -17,9 +17,7 @@ const Issue = new mongoose.Schema({
   reportedBy: { type: String, required: true },
   verifiedBy: { type: String, required: false },
   resolutionNote: { type: String, required: false },
-  maintenanceId: { type: String, required: false },
-  resolvedDate: { type: String, required: false },
-  resolvedBy: { type: String, required: false },
+  maintainanceId: { type: String, required: true },
   assignedPersonnelsList: {
     type: [
       {
@@ -72,9 +70,9 @@ const Issue = new mongoose.Schema({
   ],
 });
 
-Issue.plugin(timestamp);
+Maintainance.plugin(timestamp);
 
 
-const IssueModel = mongoose.model("issue", Issue, "issue");
+const MaintainanceModel = mongoose.model("maintainance", Maintainance, "maintainance");
 
-module.exports = IssueModel;
+module.exports = MaintainanceModel;
