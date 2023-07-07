@@ -1,5 +1,6 @@
 const IssueModel = require("../models/issue");
 const VendorAgentModel = require("../models/vendorAgent");
+const MaintainanceModel = require("../models/maintenance");
 const TruckModel = require("../models/truck");
 const ToolModel = require("../models/tool");
 const DriverModel = require("../models/driver");
@@ -488,6 +489,25 @@ const getIssue = async (req, res) => {
       }
       data.verifiedBy = verifiedBy;
     }
+    if(data?.resolvedBy) {
+      let resolvedBy = await OrganisationUserModel.findOne({
+        _id: data?.resolvedBy,
+      }).lean();
+      if (resolvedBy) {
+        resolvedBy.isDriver = false;
+        resolvedBy.name = `${resolvedBy.firstName} ${resolvedBy.lastName}`;
+      }
+      if (!resolvedBy) {
+        resolvedBy = await DriverModel.findOne({
+          _id: data?.resolvedBy,
+        }).lean();
+        if (resolvedBy) {
+          resolvedBy.isDriver = true;
+          resolvedBy.name = `${resolvedBy.firstName} ${resolvedBy.lastName}`;
+        }
+      }
+      data.resolvedBy = resolvedBy;
+    }
     const assignedPersonnelsList = [];
 
     if (data?.assignedPersonnelsList?.length > 0) {
@@ -508,6 +528,38 @@ const getIssue = async (req, res) => {
       );
     }
     data.assignedPersonnelsList = assignedPersonnelsList;
+    const statusList = data?.statusList || [];
+    const statusListWithUser = [];
+    if (statusList.length > 0) {
+      await Promise.all(
+        statusList.map(async (status) => {
+          const { userId } = status;
+          const user = await OrganisationUserModel.findOne(
+            {
+              _id: userId,
+            },
+            {
+              firstName: 1,
+              lastName: 1,
+              imageUrl: 1,
+            }
+          ).lean();
+          if (user) {
+            statusListWithUser.push({
+              ...status,
+              user,
+            });
+          }
+        })
+      );
+    }
+    data.statusList = statusListWithUser.sort(function (a, b) {
+      // sort by date and action
+      if (a?.date === b?.date) {
+        return a?.action - b?.action;
+      }
+      return new Date(b?.date) - new Date(a?.date);
+    });
 
     return res.status(200).send({ data: issueWithAsset[0] });
   } catch (error) {
@@ -725,7 +777,7 @@ const updateIssue = async (req, res) => {
         }
       });
     }
-   
+
     let status = oldData?.status;
 
     let newStatusObj;
@@ -1309,6 +1361,133 @@ const deleteIssueImage = async (req, res) => {
     return res.status(500).send({ error: error.message });
   }
 };
+const resolveIssue = async (req, res) => {
+  try {
+    const { maintenanceId, resolutionNote, userId, issueId, } = req.body;
+    if (!issueId) return res.status(400).send({ error: "issueId is required" });
+    if (!maintenanceId && !resolutionNote)
+      return res
+        .status(400)
+        .send({ error: "maintenanceId or resolution Note is required" });
+    if (!userId) return res.status(400).send({ error: "userId is required" });
+    let details;
+    if (resolutionNote && resolutionNote.length === 0)
+      return res
+        .status(400)
+        .send({ error: "resolution note provided cannot be empty" });
+
+    const issue = await IssueModel.findById({ _id: issueId });
+    if (!issue) return res.status(400).send({ error: "issue not found" });
+    if (issue.status === "Resolved")
+      return res.status(400).send({ error: "issue already resolved" });
+    if (issue.status === "Pending")
+      return res.status(400).send({ error: "issue is still pending" });
+
+    if (maintenanceId) {
+      const maintenance = await MaintainanceModel.findById({
+        _id: maintenanceId,
+      });
+      if (!maintenance)
+        return res.status(400).send({ error: "maintenance not found" });
+      details = `resolved maintenance with id ${maintenanceId}`;
+    }
+    if (resolutionNote) {
+      details = `resolved maintenance with note`;
+    }
+
+    const log = {
+      date: new Date(),
+      userId,
+      action: "resolve",
+      details,
+    };
+    const newStatusObj = {
+      status: "Resolved",
+      date: new Date(),
+      userId,
+    };
+    const updateIssues = await IssueModel.findByIdAndUpdate(
+      { _id: issueId },
+      {
+        status: "Resolved",
+        resolutionNote,
+        maintenanceId,
+        resolvedBy: userId,
+        resolvedDate: new Date(),
+        $push: {
+          logs: log,
+          statusList: newStatusObj,
+        },
+      },
+      { new: true }
+    );
+    if (!updateIssues)
+      return res
+        .status(400)
+        .send({
+          error:
+            "error in resolving issue. contact customer support if this continues",
+        });
+    return res.status(200).send({ data: updateIssues });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
+const reOpenIssue = async (req, res) => {
+  try {
+    const { reason, userId, issueId, } = req.body;
+    if (!issueId) return res.status(400).send({ error: "issueId is required" });
+    if (!reason) return res.status(400).send({ error: "reason is required" });
+    if (!userId) return res.status(400).send({ error: "userId is required" });
+    
+    const issue = await IssueModel.findById({ _id: issueId });
+    if (!issue) return res.status(400).send({ error: "issue not found" });
+    if (issue.status !== "Resolved")
+      return res.status(400).send({ error: "issue is not resolved yet. you can only reopen resolved issue" });
+ 
+
+    
+    
+
+    const log = {
+      date: new Date(),
+      userId,
+      action: "reopen",
+      details: `reopened issue`,
+      reason,
+    };
+    const newStatusObj = {
+      status: "Reopened",
+      date: new Date(),
+      userId,
+    };
+    const updateIssues = await IssueModel.findByIdAndUpdate(
+      { _id: issueId },
+      {
+        status: "Open",
+        resolutionNote: "",
+        maintenanceId: "",
+        resolvedBy: "",
+        resolvedDate: "",
+        $push: {
+          logs: log,
+          statusList: newStatusObj,
+        },
+      },
+      { new: true }
+    );
+    if (!updateIssues)
+      return res
+        .status(400)
+        .send({
+          error:
+            "error in reopening issue. contact customer support if this continues",
+        });
+    return res.status(200).send({ data: updateIssues });
+  } catch (error) {
+    return res.status(500).send({ error: error.message });
+  }
+};
 module.exports = {
   addIssueRemark,
   deleteIssueRemark,
@@ -1323,4 +1502,6 @@ module.exports = {
   uploadImages,
   deleteIssueImage,
   getIssueLogs,
+  resolveIssue,
+  reOpenIssue,
 };

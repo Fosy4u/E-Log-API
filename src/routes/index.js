@@ -479,6 +479,8 @@ let routes = (app) => {
   );
   router.put("/issue/delete", authMiddleware, issueResolver.deleteIssues);
   router.put("/issue/restore", authMiddleware, issueResolver.restoreIssues);
+  router.put("/issue/resolve", authMiddleware, issueResolver.resolveIssue);
+  router.put("/issue/reopen", authMiddleware, issueResolver. reOpenIssue);
 
   router.put("/issue/addRemark", authMiddleware, issueResolver.addIssueRemark);
   router.put(
