@@ -8,6 +8,16 @@ const EmailTemplateSchema = new mongoose.Schema({
   body: { type: String, required: true },
 });
 
+const MaintenanceTaskSchema = new mongoose.Schema({
+  organisationId: { type: String, required: true },
+  maintenanceId: { type: String, required: true },
+  description: { type: String, required: false },
+  name: { type: String, required: true },
+  defaultCategoryCode: { type: String, required: false },
+  defaultSystemCode: { type: String, required: false },
+  defaultAssemblyCode: { type: String, required: false },
+});
+
 const TemplateSchema = new mongoose.Schema({
   disabled: { type: Boolean, default: false },
   organisationId: { type: String, required: true },
@@ -160,6 +170,7 @@ const TemplateSchema = new mongoose.Schema({
     ],
   },
   emailTemplates : [EmailTemplateSchema],
+  maintenanceTasks: [MaintenanceTaskSchema],
 
   expenseType: {
     type: Array,

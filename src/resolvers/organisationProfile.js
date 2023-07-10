@@ -89,10 +89,20 @@ const createOrganisationProfile = async (req, res) => {
       });
     }
 
-    console.log("new user successful", newUser);
-    const template = new TemplateModel({
-      organisationId: newOrganisation._id,
-    });
+    let template;
+    const defaultTemplate = await TemplateModel.findOne({
+      default: true,
+    }).lean();
+    if (!defaultTemplate) {
+      template = new TemplateModel({
+        organisationId: newOrganisation._id,
+      });
+    } else {
+      template = new TemplateModel({
+        organisationId: newOrganisation._id,
+        ...defaultTemplate,
+      });
+    }
     const newTemplate = await template.save();
     // update organisation with emailSenders
     const emailSender = {

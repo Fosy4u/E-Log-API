@@ -299,8 +299,9 @@ const getAllProfitAndLoss = async (req, res) => {
 
     const shortages = shortagedTrips.map((trip) => {
       const { shortage, dropOffDate, requestId, waybillNumber, _id } = trip;
+      
       return {
-        debit: Number(shortage.shortageAmount),
+        debit: Number(shortage?.shortageAmount || 0),
         date: moment(dropOffDate).format("YYYY-MM-DD"),
         _id,
         requestId,

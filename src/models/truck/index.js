@@ -54,6 +54,7 @@ const TruckSchema = new mongoose.Schema({
   colorTag: { type: String, required: true },
   carDocs: CarDocs,
   maxLoad: { type: String, required: true },
+  mileage: { type: String, required: false },
   assignedPersonnelsList: {
     type: [
       {

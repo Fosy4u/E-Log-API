@@ -458,7 +458,6 @@ let routes = (app) => {
   );
   router.put("/trip/editRemark", authMiddleware, tripResolver.editTripRemark);
 
- 
   //Issues
 
   router.post(
@@ -480,7 +479,7 @@ let routes = (app) => {
   router.put("/issue/delete", authMiddleware, issueResolver.deleteIssues);
   router.put("/issue/restore", authMiddleware, issueResolver.restoreIssues);
   router.put("/issue/resolve", authMiddleware, issueResolver.resolveIssue);
-  router.put("/issue/reopen", authMiddleware, issueResolver. reOpenIssue);
+  router.put("/issue/reopen", authMiddleware, issueResolver.reOpenIssue);
 
   router.put("/issue/addRemark", authMiddleware, issueResolver.addIssueRemark);
   router.put(
@@ -505,10 +504,9 @@ let routes = (app) => {
     issueResolver.deleteIssueImage
   );
 
+  //Expenses
 
-   //Expenses
-
-   router.post(
+  router.post(
     "/expenses/create",
     authMiddleware,
     handleMoreFieldsUploads,
@@ -890,6 +888,18 @@ let routes = (app) => {
 
   //Template
   router.get("/template", templateResolver.getTemplate);
+  router.put(
+    "/template/addMaintenanceTask",
+    templateResolver.addMaintenanceTask
+  );
+  router.put(
+    "/template/deleteMaintenanceTask",
+    templateResolver.deleteMaintenanceTask
+  );
+  router.put(
+    "/template/editMaintenanceTask",
+    templateResolver.editMaintenanceTask
+  );
   router.put("/template/addTyreBrand", templateResolver.addTyreBrand);
   router.put("/template/deleteTyreBrand", templateResolver.deleteTyreBrand);
   router.put("/template/editTyreBrand", templateResolver.editTyreBrand);

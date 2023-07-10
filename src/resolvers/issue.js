@@ -11,6 +11,8 @@ const root = require("../../root");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
+
+
 const {
   canDeleteOrEditOrganisationIssuesRemark,
   canEditOrganisationIssues,
@@ -404,6 +406,7 @@ const getIssues = async (req, res) => {
         error: "Please provide organisation id",
       });
     }
+  
 
     const issues = await IssueModel.find({
       organisationId,
