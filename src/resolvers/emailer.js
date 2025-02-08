@@ -11,8 +11,9 @@ const url =
     ? process.env.DOC_DOWNLOAD_URL_PROD
     : process.env.DOC_DOWNLOAD_URL_DEV;
 const transport = {
-  host: "mail.privateemail.com", // your_host_here
-  //   host: "smtp.mail.yahoo.com.", // your_host_here
+ // host: 
+  //"mail.privateemail.com", // your_host_here
+    host: "smtp.mail.yahoo.com.", // your_host_here
   auth: {
     user: creds.USER,
     pass: creds.PASS,
@@ -26,9 +27,9 @@ const transport = {
 const transporter = nodemailer.createTransport(transport);
 transporter.verify((error, success) => {
   if (error) {
-    console.log("err", error);
+    console.log("error with nodemailer transporter", error);
   } else {
-    console.log("All works fine, congratz!");
+    console.log("All works fine, nodemailer transporter is ready");
   }
 });
 

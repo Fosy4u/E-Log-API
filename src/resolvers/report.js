@@ -299,7 +299,7 @@ const getAllProfitAndLoss = async (req, res) => {
 
     const shortages = shortagedTrips.map((trip) => {
       const { shortage, dropOffDate, requestId, waybillNumber, _id } = trip;
-      
+
       return {
         debit: Number(shortage?.shortageAmount || 0),
         date: moment(dropOffDate).format("YYYY-MM-DD"),
@@ -336,6 +336,7 @@ const getAllProfitAndLoss = async (req, res) => {
       ...nonTripPayments,
       ...shortages,
     ];
+
     const sortedValues = allValues.sort(
       (a, b) => new Date(a.date) - new Date(b.date)
     );
@@ -374,6 +375,8 @@ const getAllProfitAndLoss = async (req, res) => {
       totalShortages,
       data: sortedValuesWithBalance,
     };
+    console.log("param", param);
+
     res.status(200).send({ data: param });
   } catch (error) {
     return res.status(500).send({ error: error.message });
@@ -1563,7 +1566,6 @@ const getAnalyticsByTripID = async (req, res) => {
       })
     );
 
-
     const data = combined.reduce((acc, value) => {
       const { date, amount, expensesId, requestId, shortageAmount, status } =
         value;
@@ -1590,7 +1592,6 @@ const getAnalyticsByTripID = async (req, res) => {
       }
       return acc;
     }, []);
-
 
     const fuel = {};
     if (trip.estimatedFuelLitres) {

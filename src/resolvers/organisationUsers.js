@@ -197,7 +197,7 @@ const getOrganisationUser = async (req, res) => {
   }
 };
 const getOrganisationUserById = async (req, res) => {
-  try {
+   try {
     const { _id } = req.query;
     if (!_id) {
       return res.status(400).send({ error: "_id is required" });
